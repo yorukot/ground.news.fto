@@ -18,6 +18,8 @@ import (
 var (
 	//go:embed prompts/summarize.md
 	summarizePrompt string
+	//go:embed prompts/summarize_event.md
+	summarizeEventPrompt string
 	//go:embed prompts/link.md
 	linkPrompt string
 	//go:embed prompts/title.md
@@ -72,6 +74,47 @@ func (o *OpenAI) SummarizeArticle(ctx context.Context, in ArticleInput) (Article
 		}
 	}
 	return out, nil
+}
+
+func (o *OpenAI) SummarizeEvent(ctx context.Context, in EventInput) (string, error) {
+	const maxRunes = 24000
+	// Bound unusually large, long-running events while retaining the title and
+	// latest coverage. Re-marshal after trimming so the payload stays valid JSON.
+	payloadFor := func() ([]byte, error) {
+		return json.Marshal(map[string]any{
+			"title": in.Title, "timeline": in.Timeline, "article_summaries": in.Summaries,
+		})
+	}
+	payload, err := payloadFor()
+	for err == nil && len([]rune(string(payload))) > maxRunes && len(in.Summaries) > 1 {
+		in.Summaries = in.Summaries[1:]
+		payload, err = payloadFor()
+	}
+	for err == nil && len([]rune(string(payload))) > maxRunes && len(in.Timeline) > 1 {
+		in.Timeline = in.Timeline[1:]
+		payload, err = payloadFor()
+	}
+	if err != nil {
+		return "", fmt.Errorf("summarize event payload: %w", err)
+	}
+	resp, err := o.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Model: o.model,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.SystemMessage(summarizeEventPrompt),
+			openai.UserMessage(string(payload)),
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("summarize event: %w", err)
+	}
+	if len(resp.Choices) == 0 {
+		return "", errors.New("summarize event: no choices returned")
+	}
+	summary := strings.TrimSpace(resp.Choices[0].Message.Content)
+	if summary == "" {
+		return "", errors.New("summarize event: empty summary")
+	}
+	return summary, nil
 }
 
 func (o *OpenAI) LinkToEvent(ctx context.Context, in LinkInput) (LinkDecision, error) {

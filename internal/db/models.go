@@ -43,12 +43,15 @@ type Entity struct {
 }
 
 type Event struct {
-	ID           int64
-	Title        string
-	FirstSeenAt  time.Time
-	UpdatedAt    time.Time
-	TimelineText string
-	Search       interface{}
+	ID                   int64
+	Title                string
+	FirstSeenAt          time.Time
+	UpdatedAt            time.Time
+	TimelineText         string
+	Search               interface{}
+	Summary              string
+	SummaryModel         string
+	SummaryPromptVersion string
 }
 
 type EventEntity struct {

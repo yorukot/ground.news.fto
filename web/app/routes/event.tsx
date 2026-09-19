@@ -16,7 +16,11 @@ export function meta({ loaderData, matches }: Route.MetaArgs) {
   const m = messagesFor(matches);
   if (!loaderData) return pageMeta(m, m.error.notFoundTitle, m.error.notFoundBody);
   const latest = loaderData.timeline.at(-1)?.development ?? "";
-  return pageMeta(m, loaderData.title, m.event.description(loaderData.title, latest));
+  return pageMeta(
+    m,
+    loaderData.title,
+    loaderData.summary || m.event.description(loaderData.title, latest),
+  );
 }
 
 export default function EventPage({ loaderData: event }: Route.ComponentProps) {
@@ -29,6 +33,7 @@ export default function EventPage({ loaderData: event }: Route.ComponentProps) {
     <>
       <header className={styles.header}>
         <h1 className={`${styles.title} md-headline-medium`}>{event.title}</h1>
+        {event.summary && <p className={`${styles.summary} md-body-large`}>{event.summary}</p>}
         <p className={`${styles.meta} md-label-medium`}>
           <span>
             {m.event.firstSeen}{" "}

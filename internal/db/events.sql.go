@@ -33,6 +33,7 @@ const getEvent = `-- name: GetEvent :one
 SELECT
     e.id,
     e.title,
+	 e.summary,
     e.first_seen_at,
     e.updated_at,
     (SELECT count(*) FROM articles a WHERE a.event_id = e.id)::bigint AS article_count,
@@ -44,6 +45,7 @@ WHERE e.id = $1
 type GetEventRow struct {
 	ID           int64
 	Title        string
+	Summary      string
 	FirstSeenAt  time.Time
 	UpdatedAt    time.Time
 	ArticleCount int64
@@ -56,6 +58,7 @@ func (q *Queries) GetEvent(ctx context.Context, id int64) (GetEventRow, error) {
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
+		&i.Summary,
 		&i.FirstSeenAt,
 		&i.UpdatedAt,
 		&i.ArticleCount,

@@ -9,10 +9,16 @@ import "context"
 // changes in a way that could change outputs.
 const PromptVersion = "v2"
 
+// EventSummaryPromptVersion is tracked separately because event summaries
+// have their own prompt and can be regenerated independently.
+const EventSummaryPromptVersion = "v1"
+
 type Client interface {
 	// SummarizeArticle analyzes one article on its own: no other article's
 	// facts may leak into the result.
 	SummarizeArticle(ctx context.Context, in ArticleInput) (ArticleAnalysis, error)
+	// SummarizeEvent synthesizes the coverage already assigned to one event.
+	SummarizeEvent(ctx context.Context, in EventInput) (string, error)
 	// LinkToEvent picks the candidate event the article belongs to, or none.
 	LinkToEvent(ctx context.Context, in LinkInput) (LinkDecision, error)
 	// TitleEvent writes a short factual title for a new event.
@@ -26,6 +32,12 @@ type ArticleInput struct {
 	Headline    string
 	Body        string
 	PublishedOn string // YYYY-MM-DD in Asia/Taipei, so "yesterday" can be resolved
+}
+
+type EventInput struct {
+	Title     string
+	Timeline  []string
+	Summaries []string
 }
 
 type EntityKind string

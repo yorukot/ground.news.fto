@@ -262,7 +262,107 @@ func (w *LinkArticleWorker) Work(ctx context.Context, job *river.Job[LinkArticle
 	if err != nil {
 		return err
 	}
+	if res.EventID != 0 {
+		client := river.ClientFromContext[pgx.Tx](ctx)
+		if _, err := client.Insert(ctx, SummarizeEventArgs{EventID: res.EventID}, nil); err != nil {
+			return fmt.Errorf("enqueue event summary: %w", err)
+		}
+	}
 	slog.Info("linked article", "article", job.Args.ArticleID, "event", res.EventID,
 		"new_event", res.NewEvent, "new_step", res.NewStep, "confidence", res.Confidence, "skipped", res.Skipped)
+	return nil
+}
+
+type SummarizeEventArgs struct {
+	EventID int64 `json:"event_id"`
+}
+
+type EnqueueEventSummariesArgs struct{}
+
+func (EnqueueEventSummariesArgs) Kind() string { return "enqueue_event_summaries" }
+
+type EnqueueEventSummariesWorker struct {
+	river.WorkerDefaults[EnqueueEventSummariesArgs]
+	deps Deps
+}
+
+func (w *EnqueueEventSummariesWorker) Work(ctx context.Context, _ *river.Job[EnqueueEventSummariesArgs]) error {
+	q := db.New(w.deps.Pool)
+	events, err := q.ListEventsNeedingSummary(ctx, db.ListEventsNeedingSummaryParams{
+		Model: w.deps.AI.Model(), PromptVersion: ai.EventSummaryPromptVersion, MaxResults: 100,
+	})
+	if err != nil {
+		return fmt.Errorf("list events needing summaries: %w", err)
+	}
+	client := river.ClientFromContext[pgx.Tx](ctx)
+	for _, event := range events {
+		if _, err := client.Insert(ctx, SummarizeEventArgs{EventID: event}, nil); err != nil {
+			return fmt.Errorf("enqueue summary for event %d: %w", event, err)
+		}
+	}
+	return nil
+}
+
+func (SummarizeEventArgs) Kind() string { return "summarize_event" }
+
+func (SummarizeEventArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{Queue: QueueAI, MaxAttempts: 5}
+}
+
+type SummarizeEventWorker struct {
+	river.WorkerDefaults[SummarizeEventArgs]
+	deps Deps
+}
+
+func (w *SummarizeEventWorker) Timeout(*river.Job[SummarizeEventArgs]) time.Duration {
+	return 4 * time.Minute
+}
+
+func (w *SummarizeEventWorker) Work(ctx context.Context, job *river.Job[SummarizeEventArgs]) error {
+	q := db.New(w.deps.Pool)
+	event, err := q.GetEventForSummary(ctx, job.Args.EventID)
+	if err != nil {
+		return fmt.Errorf("load event for summary: %w", err)
+	}
+	if event.SummaryModel == w.deps.AI.Model() && event.SummaryPromptVersion == ai.EventSummaryPromptVersion {
+		return nil
+	}
+	sources, err := q.ListEventSummarySources(ctx, job.Args.EventID)
+	if err != nil {
+		return fmt.Errorf("load event summary sources: %w", err)
+	}
+	timeline := make([]string, 0, len(sources))
+	summaries := make([]string, 0, len(sources))
+	seenDevelopments := make(map[string]struct{})
+	for _, source := range sources {
+		if source.Development != "" {
+			if _, exists := seenDevelopments[source.Development]; !exists {
+				timeline = append(timeline, source.Development)
+				seenDevelopments[source.Development] = struct{}{}
+			}
+		}
+		if source.Summary != "" {
+			summaries = append(summaries, source.Summary)
+		}
+	}
+	if len(summaries) == 0 {
+		return nil
+	}
+	summary, err := w.deps.AI.SummarizeEvent(ctx, ai.EventInput{
+		Title: event.Title, Timeline: timeline, Summaries: summaries,
+	})
+	if err != nil {
+		return fmt.Errorf("summarize event: %w", err)
+	}
+	updated, err := q.SetEventSummary(ctx, db.SetEventSummaryParams{
+		ID: event.ID, Summary: summary, Model: w.deps.AI.Model(),
+		PromptVersion: ai.EventSummaryPromptVersion, ExpectedUpdatedAt: event.UpdatedAt,
+	})
+	if err != nil {
+		return fmt.Errorf("store event summary: %w", err)
+	}
+	if updated == 0 {
+		return errors.New("event changed while its summary was being generated")
+	}
 	return nil
 }

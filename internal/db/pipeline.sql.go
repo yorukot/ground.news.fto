@@ -203,6 +203,33 @@ func (q *Queries) GetArticleForLink(ctx context.Context, id int64) (GetArticleFo
 	return i, err
 }
 
+const getEventForSummary = `-- name: GetEventForSummary :one
+SELECT id, title, updated_at, summary_model, summary_prompt_version
+FROM events
+WHERE id = $1
+`
+
+type GetEventForSummaryRow struct {
+	ID                   int64
+	Title                string
+	UpdatedAt            time.Time
+	SummaryModel         string
+	SummaryPromptVersion string
+}
+
+func (q *Queries) GetEventForSummary(ctx context.Context, id int64) (GetEventForSummaryRow, error) {
+	row := q.db.QueryRow(ctx, getEventForSummary, id)
+	var i GetEventForSummaryRow
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.UpdatedAt,
+		&i.SummaryModel,
+		&i.SummaryPromptVersion,
+	)
+	return i, err
+}
+
 const getEventTitles = `-- name: GetEventTitles :many
 SELECT id, title FROM events WHERE id = ANY($1::bigint[])
 `
@@ -478,6 +505,77 @@ func (q *Queries) ListEventSteps(ctx context.Context, eventIds []int64) ([]ListE
 	return items, nil
 }
 
+const listEventSummarySources = `-- name: ListEventSummarySources :many
+SELECT a.development, s.text AS summary
+FROM articles a
+JOIN summaries s ON s.article_id = a.id
+WHERE a.event_id = $1::bigint AND a.reprint_of_id IS NULL
+ORDER BY a.published_at ASC, a.id ASC
+`
+
+type ListEventSummarySourcesRow struct {
+	Development string
+	Summary     string
+}
+
+func (q *Queries) ListEventSummarySources(ctx context.Context, eventID int64) ([]ListEventSummarySourcesRow, error) {
+	rows, err := q.db.Query(ctx, listEventSummarySources, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEventSummarySourcesRow{}
+	for rows.Next() {
+		var i ListEventSummarySourcesRow
+		if err := rows.Scan(&i.Development, &i.Summary); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEventsNeedingSummary = `-- name: ListEventsNeedingSummary :many
+SELECT e.id
+FROM events e
+WHERE (e.summary_model <> $1 OR e.summary_prompt_version <> $2)
+  AND EXISTS (
+      SELECT 1 FROM articles a JOIN summaries s ON s.article_id = a.id
+      WHERE a.event_id = e.id AND a.reprint_of_id IS NULL
+  )
+ORDER BY e.updated_at DESC
+LIMIT $3
+`
+
+type ListEventsNeedingSummaryParams struct {
+	Model         string
+	PromptVersion string
+	MaxResults    int32
+}
+
+func (q *Queries) ListEventsNeedingSummary(ctx context.Context, arg ListEventsNeedingSummaryParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listEventsNeedingSummary, arg.Model, arg.PromptVersion, arg.MaxResults)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRecentEventsSharingEntities = `-- name: ListRecentEventsSharingEntities :many
 SELECT ee.event_id AS id, count(*)::bigint AS shared
 FROM event_entities ee
@@ -642,6 +740,37 @@ func (q *Queries) SetEntityAliases(ctx context.Context, arg SetEntityAliasesPara
 	return err
 }
 
+const setEventSummary = `-- name: SetEventSummary :execrows
+UPDATE events
+SET summary = $1,
+    summary_model = $2,
+    summary_prompt_version = $3
+WHERE id = $4 AND updated_at = $5
+`
+
+type SetEventSummaryParams struct {
+	Summary           string
+	Model             string
+	PromptVersion     string
+	ID                int64
+	ExpectedUpdatedAt time.Time
+}
+
+// Do not let a slower job overwrite an overview made from newer coverage.
+func (q *Queries) SetEventSummary(ctx context.Context, arg SetEventSummaryParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setEventSummary,
+		arg.Summary,
+		arg.Model,
+		arg.PromptVersion,
+		arg.ID,
+		arg.ExpectedUpdatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setReprintsEvent = `-- name: SetReprintsEvent :exec
 UPDATE articles
 SET event_id = $2
@@ -661,7 +790,9 @@ func (q *Queries) SetReprintsEvent(ctx context.Context, arg SetReprintsEventPara
 
 const touchEvent = `-- name: TouchEvent :exec
 UPDATE events
-SET updated_at = GREATEST(updated_at, $1), timeline_text = $2
+SET updated_at = GREATEST(updated_at, $1),
+    timeline_text = $2,
+    summary_prompt_version = ''
 WHERE id = $3
 `
 

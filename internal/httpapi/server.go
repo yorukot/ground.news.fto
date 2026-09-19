@@ -133,6 +133,7 @@ func (s *Server) getEvent(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, EventDetail{
 		ID:           event.ID,
 		Title:        event.Title,
+		Summary:      event.Summary,
 		FirstSeenAt:  event.FirstSeenAt,
 		UpdatedAt:    event.UpdatedAt,
 		ArticleCount: event.ArticleCount,

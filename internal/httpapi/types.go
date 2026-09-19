@@ -30,6 +30,7 @@ type EventsPage struct {
 type EventDetail struct {
 	ID           int64          `json:"id"`
 	Title        string         `json:"title"`
+	Summary      string         `json:"summary"`
 	FirstSeenAt  time.Time      `json:"firstSeenAt"`
 	UpdatedAt    time.Time      `json:"updatedAt"`
 	ArticleCount int64          `json:"articleCount"`

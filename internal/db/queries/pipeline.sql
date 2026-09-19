@@ -76,10 +76,43 @@ ORDER BY a.event_id, COALESCE(a.happened_on, a.published_at::date), a.published_
 -- name: GetEventTitles :many
 SELECT id, title FROM events WHERE id = ANY(sqlc.arg(event_ids)::bigint[]);
 
+-- name: GetEventForSummary :one
+SELECT id, title, updated_at, summary_model, summary_prompt_version
+FROM events
+WHERE id = $1;
+
+-- name: ListEventsNeedingSummary :many
+SELECT e.id
+FROM events e
+WHERE (e.summary_model <> sqlc.arg(model) OR e.summary_prompt_version <> sqlc.arg(prompt_version))
+  AND EXISTS (
+      SELECT 1 FROM articles a JOIN summaries s ON s.article_id = a.id
+      WHERE a.event_id = e.id AND a.reprint_of_id IS NULL
+  )
+ORDER BY e.updated_at DESC
+LIMIT sqlc.arg(max_results);
+
+-- name: ListEventSummarySources :many
+SELECT a.development, s.text AS summary
+FROM articles a
+JOIN summaries s ON s.article_id = a.id
+WHERE a.event_id = sqlc.arg(event_id)::bigint AND a.reprint_of_id IS NULL
+ORDER BY a.published_at ASC, a.id ASC;
+
+-- name: SetEventSummary :execrows
+-- Do not let a slower job overwrite an overview made from newer coverage.
+UPDATE events
+SET summary = sqlc.arg(summary),
+    summary_model = sqlc.arg(model),
+    summary_prompt_version = sqlc.arg(prompt_version)
+WHERE id = sqlc.arg(id) AND updated_at = sqlc.arg(expected_updated_at);
+
 -- name: TouchEvent :exec
 -- Moves the event to the top of the homepage and refreshes its search text.
 UPDATE events
-SET updated_at = GREATEST(updated_at, sqlc.arg(updated_at)), timeline_text = sqlc.arg(timeline_text)
+SET updated_at = GREATEST(updated_at, sqlc.arg(updated_at)),
+    timeline_text = sqlc.arg(timeline_text),
+    summary_prompt_version = ''
 WHERE id = sqlc.arg(id);
 
 -- name: FindEntity :one

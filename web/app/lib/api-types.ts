@@ -93,6 +93,8 @@ export interface components {
             /** Format: int64 */
             id: number;
             title: string;
+            /** @description A neutral overview synthesized from the event's coverage; empty while it is being generated. */
+            summary: string;
             /** Format: date-time */
             firstSeenAt: string;
             /** Format: date-time */

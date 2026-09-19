@@ -25,6 +25,13 @@ func (Fake) SummarizeArticle(_ context.Context, in ArticleInput) (ArticleAnalysi
 	}, nil
 }
 
+func (Fake) SummarizeEvent(_ context.Context, in EventInput) (string, error) {
+	if len(in.Summaries) > 0 {
+		return firstRunes(strings.Join(in.Summaries, " "), 400), nil
+	}
+	return firstRunes(strings.Join(in.Timeline, ". "), 400), nil
+}
+
 func (Fake) LinkToEvent(_ context.Context, in LinkInput) (LinkDecision, error) {
 	for _, c := range in.Candidates {
 		for _, s := range c.Steps {

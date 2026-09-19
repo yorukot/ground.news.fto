@@ -18,8 +18,9 @@ import (
 )
 
 type fakeStore struct {
-	events   []db.ListEventsRow // newest first
-	articles map[int64][]db.ListEventArticlesRow
+	events         []db.ListEventsRow // newest first
+	articles       map[int64][]db.ListEventArticlesRow
+	eventSummaries map[int64]string
 }
 
 func (f *fakeStore) ListEvents(_ context.Context, arg db.ListEventsParams) ([]db.ListEventsRow, error) {
@@ -37,7 +38,7 @@ func (f *fakeStore) ListEvents(_ context.Context, arg db.ListEventsParams) ([]db
 func (f *fakeStore) GetEvent(_ context.Context, id int64) (db.GetEventRow, error) {
 	for _, e := range f.events {
 		if e.ID == id {
-			return db.GetEventRow{ID: e.ID, Title: e.Title, FirstSeenAt: e.FirstSeenAt, UpdatedAt: e.UpdatedAt}, nil
+			return db.GetEventRow{ID: e.ID, Title: e.Title, Summary: f.eventSummaries[id], FirstSeenAt: e.FirstSeenAt, UpdatedAt: e.UpdatedAt}, nil
 		}
 	}
 	return db.GetEventRow{}, pgx.ErrNoRows
@@ -151,8 +152,9 @@ func TestGetEventBuildsTimelineAndFoldsReprints(t *testing.T) {
 	sameOutlet.StepArticleID = int8v(1)
 
 	store := &fakeStore{
-		events:   []db.ListEventsRow{{ID: 7, Title: "event", UpdatedAt: t0}},
-		articles: map[int64][]db.ListEventArticlesRow{7: {undated, sameOutlet, explainer, follower, reprint, wire}},
+		events:         []db.ListEventsRow{{ID: 7, Title: "event", UpdatedAt: t0}},
+		articles:       map[int64][]db.ListEventArticlesRow{7: {undated, sameOutlet, explainer, follower, reprint, wire}},
+		eventSummaries: map[int64]string{7: "An overview of the whole event."},
 	}
 
 	var got EventDetail
@@ -162,6 +164,9 @@ func TestGetEventBuildsTimelineAndFoldsReprints(t *testing.T) {
 
 	if len(got.Articles) != 5 {
 		t.Fatalf("articles = %d, want 5 (reprint folded)", len(got.Articles))
+	}
+	if got.Summary != "An overview of the whole event." {
+		t.Errorf("summary = %q", got.Summary)
 	}
 	var wireCard *Article
 	for i := range got.Articles {

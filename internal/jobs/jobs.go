@@ -1,6 +1,6 @@
 // Package jobs is the ingestion pipeline as River jobs:
 //
-//	crawl_all → crawl_outlet → fetch_article → dedupe_article → summarize_article → link_article
+//	crawl_all → crawl_outlet → fetch_article → dedupe_article → summarize_article → link_article → summarize_event
 //
 // Outlets in headline-only coverage take a shorter path that never fetches an
 // article page and never calls the model:
@@ -30,7 +30,8 @@ const (
 	// QueueLink has exactly one worker; see link.Linker.Link.
 	QueueLink = "link"
 
-	crawlInterval = 5 * time.Minute
+	crawlInterval        = 5 * time.Minute
+	eventSummaryInterval = 10 * time.Minute
 	// maxArticleAge skips old items that feeds sometimes resurface.
 	maxArticleAge = 7 * 24 * time.Hour
 	// reprintWindow is how far back wire originals are looked for.
@@ -65,6 +66,8 @@ func Workers(d Deps) *river.Workers {
 	river.AddWorker(workers, &DedupeArticleWorker{deps: d})
 	river.AddWorker(workers, &SummarizeArticleWorker{deps: d})
 	river.AddWorker(workers, &LinkArticleWorker{linker: &link.Linker{Pool: d.Pool, AI: d.AI}})
+	river.AddWorker(workers, &SummarizeEventWorker{deps: d})
+	river.AddWorker(workers, &EnqueueEventSummariesWorker{deps: d})
 	river.AddWorker(workers, &MatchHeadlineWorker{deps: d})
 	return workers
 }
@@ -74,6 +77,11 @@ func PeriodicJobs() []*river.PeriodicJob {
 		river.NewPeriodicJob(
 			river.PeriodicInterval(crawlInterval),
 			func() (river.JobArgs, *river.InsertOpts) { return CrawlAllArgs{}, nil },
+			&river.PeriodicJobOpts{RunOnStart: true},
+		),
+		river.NewPeriodicJob(
+			river.PeriodicInterval(eventSummaryInterval),
+			func() (river.JobArgs, *river.InsertOpts) { return EnqueueEventSummariesArgs{}, nil },
 			&river.PeriodicJobOpts{RunOnStart: true},
 		),
 	}

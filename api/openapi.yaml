@@ -109,10 +109,13 @@ components:
           type: [string, "null"]
     EventDetail:
       type: object
-      required: [id, title, firstSeenAt, updatedAt, articleCount, outletCount, timeline, articles]
+      required: [id, title, summary, firstSeenAt, updatedAt, articleCount, outletCount, timeline, articles]
       properties:
         id: { type: integer, format: int64 }
         title: { type: string }
+        summary:
+          type: string
+          description: A neutral overview synthesized from the event's coverage; empty while it is being generated.
         firstSeenAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         articleCount: { type: integer }
