@@ -165,7 +165,10 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        /** @description Language of the site's own text. Falls back to English for text that has no Traditional Chinese version yet. */
+        Lang: "en" | "zh-TW";
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -178,6 +181,8 @@ export interface operations {
                 /** @description Opaque cursor from a previous page's nextCursor. */
                 cursor?: string;
                 limit?: number;
+                /** @description Language of the site's own text. Falls back to English for text that has no Traditional Chinese version yet. */
+                lang?: components["parameters"]["Lang"];
             };
             header?: never;
             path?: never;
@@ -199,7 +204,10 @@ export interface operations {
     };
     getEvent: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Language of the site's own text. Falls back to English for text that has no Traditional Chinese version yet. */
+                lang?: components["parameters"]["Lang"];
+            };
             header?: never;
             path: {
                 id: number;

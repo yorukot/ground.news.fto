@@ -29,6 +29,9 @@ const (
 	QueueAI    = "ai"
 	// QueueLink has exactly one worker; see link.Linker.Link.
 	QueueLink = "link"
+	// QueueTranslate is separate from QueueAI so that a long summarizing
+	// backlog cannot starve the Chinese backfill, and the other way round.
+	QueueTranslate = "translate"
 
 	crawlInterval = 5 * time.Minute
 	// maxArticleAge skips old items that feeds sometimes resurface.
@@ -54,6 +57,7 @@ func Queues() map[string]river.QueueConfig {
 		QueueFetch:         {MaxWorkers: 4},
 		QueueAI:            {MaxWorkers: 2},
 		QueueLink:          {MaxWorkers: 1},
+		QueueTranslate:     {MaxWorkers: 1},
 	}
 }
 
@@ -66,6 +70,7 @@ func Workers(d Deps) *river.Workers {
 	river.AddWorker(workers, &SummarizeArticleWorker{deps: d})
 	river.AddWorker(workers, &LinkArticleWorker{linker: &link.Linker{Pool: d.Pool, AI: d.AI}})
 	river.AddWorker(workers, &MatchHeadlineWorker{deps: d})
+	river.AddWorker(workers, &TranslateMissingWorker{deps: d})
 	return workers
 }
 
@@ -74,6 +79,11 @@ func PeriodicJobs() []*river.PeriodicJob {
 		river.NewPeriodicJob(
 			river.PeriodicInterval(crawlInterval),
 			func() (river.JobArgs, *river.InsertOpts) { return CrawlAllArgs{}, nil },
+			&river.PeriodicJobOpts{RunOnStart: true},
+		),
+		river.NewPeriodicJob(
+			river.PeriodicInterval(crawlInterval),
+			func() (river.JobArgs, *river.InsertOpts) { return TranslateMissingArgs{}, nil },
 			&river.PeriodicJobOpts{RunOnStart: true},
 		),
 	}

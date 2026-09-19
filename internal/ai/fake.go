@@ -16,12 +16,16 @@ type Fake struct{}
 func (Fake) Model() string { return "fake" }
 
 func (Fake) SummarizeArticle(_ context.Context, in ArticleInput) (ArticleAnalysis, error) {
+	summary := firstRunes(strings.Join(strings.Fields(in.Body), " "), 200)
+	// The fake works on the Chinese source text, so both languages are the same.
 	return ArticleAnalysis{
-		Summary:     firstRunes(strings.Join(strings.Fields(in.Body), " "), 200),
-		Development: in.Headline,
-		HappenedOn:  in.PublishedOn,
-		Entities:    []Entity{},
-		Recaps:      []string{},
+		Summary:       summary,
+		SummaryZh:     summary,
+		Development:   in.Headline,
+		DevelopmentZh: in.Headline,
+		HappenedOn:    in.PublishedOn,
+		Entities:      []Entity{},
+		Recaps:        []string{},
 	}, nil
 }
 
@@ -43,6 +47,10 @@ func (Fake) LinkToEvent(_ context.Context, in LinkInput) (LinkDecision, error) {
 
 func (Fake) TitleEvent(_ context.Context, in TitleInput) (string, error) {
 	return firstRunes(in.Headline, 80), nil
+}
+
+func (Fake) Translate(_ context.Context, in TranslateInput) (Translation, error) {
+	return Translation{Title: in.Title, Summary: in.Summary, Development: in.Development}, nil
 }
 
 func firstRunes(s string, n int) string {

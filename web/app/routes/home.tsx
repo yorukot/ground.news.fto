@@ -5,12 +5,14 @@ import { EventCard } from "~/components/EventCard/EventCard";
 import { useI18n } from "~/i18n/i18n";
 import { type EventSummary, listEvents } from "~/lib/api.server";
 import { messagesFor, pageMeta } from "~/lib/meta";
+import { readPreferences } from "~/lib/preferences";
 import type { Route } from "./+types/home";
 import styles from "./home.module.css";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const cursor = new URL(request.url).searchParams.get("cursor");
-  return listEvents(cursor, request.signal);
+  const { locale } = readPreferences(request.headers.get("Cookie"));
+  return listEvents(cursor, request.signal, locale);
 }
 
 export function meta({ matches }: Route.MetaArgs) {

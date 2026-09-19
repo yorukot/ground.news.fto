@@ -33,7 +33,7 @@ Design and architecture docs for Ground News for Taiwan. The code follows these 
 4. **No embeddings in the MVP.** The plan first used embeddings to find candidate events for a new article. Since titles, timeline lines and recaps are all our own English text, Postgres full-text search plus shared entities does that job with no extra model, cost or extension. The model still makes the link decision. `events.timeline_text` must be rewritten whenever an event gains a step, so the search index stays current.
 5. **Places are entities too.** Typhoons, earthquakes and local crime stories often name no person or organization but always name a place, so `place` is an entity kind alongside `person` and `organization`.
 6. **Chinese text and MinHash.** Shingle on character n-grams (e.g. 5-character windows) rather than words, so no word segmenter is needed.
-7. **Language.** Decided after the plan was written: the site is in English, with i18n so other languages can be added. Headlines are shown unchanged, so they stay in Chinese and are marked with `lang="zh-Hant-TW"`. Summaries and timeline lines are the site's own text and are written in English. The summary rule "keep the article's own terms" then means translating terms faithfully ("the mainland" stays "the mainland", never "China").
+7. **Language.** Decided after the plan was written: the site is in English, with i18n so other languages can be added. Headlines are shown unchanged, so they stay in Chinese and are marked with `lang="zh-Hant-TW"`. Summaries, timeline lines and event titles are the site's own text and exist in both English and Traditional Chinese (Taiwan usage). English is the working language for linking and full-text search; Chinese is for display. New article summaries and timeline lines are written in both languages in the one summarize call, the Chinese straight from the source article, so it keeps the article's own wording. Event titles and older rows are translated from the English by a `translate_missing` job that runs every crawl cycle, and the API serves English while a translation is missing (`?lang=zh-TW`, default `en`). The summary rule "keep the article's own terms" means translating terms faithfully ("the mainland" stays "the mainland", never "China"; in Chinese, 大陸).
 
 ## Open questions
 
@@ -42,7 +42,6 @@ Design and architecture docs for Ground News for Taiwan. The code follows these 
 
 - The seed color is the M3 baseline violet (`#6750A4`) for now; try alternatives in Material Theme Builder before launch. Constraints are in [design-system.md](design-system.md#color).
 - The site name ("Ground News Taiwan" / "新聞並陳") is a placeholder, defined only in `web/app/i18n/messages/`.
-- Should summaries and timeline lines also be produced in Chinese for the zh-TW locale? Today they exist in one language (English); the UI chrome is what gets translated.
 - Hosting target (single VPS with Docker Compose is assumed).
 - The summary model is `rlongAI/gpt-5.5` through a LiteLLM proxy, which exposes aliases rather than dated snapshots; revisit if a pinned snapshot becomes available.
 

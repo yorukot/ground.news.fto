@@ -5,6 +5,9 @@ info:
   description: >
     Read-only public API. Article text is never served: only the original
     headline, a short summary in our own words and a link to the original.
+    The site's own text (event titles, summaries, timeline lines) exists in
+    English and Traditional Chinese; pick one with the `lang` query parameter.
+    Original headlines and outlet names are never translated.
 servers:
   - url: http://127.0.0.1:8080
 paths:
@@ -20,6 +23,7 @@ paths:
         - name: limit
           in: query
           schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+        - $ref: "#/components/parameters/Lang"
       responses:
         "200":
           description: One page of events
@@ -36,6 +40,7 @@ paths:
           in: path
           required: true
           schema: { type: integer, format: int64 }
+        - $ref: "#/components/parameters/Lang"
       responses:
         "200":
           description: The event
@@ -60,6 +65,14 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/Outlet" }
 components:
+  parameters:
+    Lang:
+      name: lang
+      in: query
+      description: >
+        Language of the site's own text. Falls back to English for text that
+        has no Traditional Chinese version yet.
+      schema: { type: string, enum: [en, zh-TW], default: en }
   responses:
     Error:
       description: Error

@@ -8,6 +8,7 @@ SELECT
     a.published_at,
     a.reprint_of_id,
     a.development,
+    a.development_zh,
     a.happened_on,
     a.date_is_approximate,
     a.step_article_id,
@@ -15,7 +16,8 @@ SELECT
     o.slug AS outlet_slug,
     o.name AS outlet_name,
     (o.coverage = 'headline')::boolean AS headline_only,
-    COALESCE(s.text, '')::text AS summary
+    COALESCE(s.text, '')::text AS summary,
+    COALESCE(s.text_zh, '')::text AS summary_zh
 FROM articles a
 JOIN outlets o ON o.id = a.outlet_id
 LEFT JOIN summaries s ON s.article_id = a.id
@@ -34,10 +36,11 @@ RETURNING id;
 UPDATE articles SET step_article_id = $2 WHERE id = $1;
 
 -- name: UpsertSummary :exec
-INSERT INTO summaries (article_id, text, recaps, model, prompt_version)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO summaries (article_id, text, text_zh, recaps, model, prompt_version)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (article_id) DO UPDATE
 SET text = EXCLUDED.text,
+    text_zh = EXCLUDED.text_zh,
     recaps = EXCLUDED.recaps,
     model = EXCLUDED.model,
     prompt_version = EXCLUDED.prompt_version,

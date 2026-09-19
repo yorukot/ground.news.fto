@@ -56,7 +56,42 @@ func (s *Server) Handler() http.Handler {
 	return s.recoverer(s.logger(mux))
 }
 
+// lang is the language of the site's own text (titles, summaries, timeline
+// lines). Original headlines and outlet names are never translated.
+type lang string
+
+const (
+	langEN lang = "en"
+	langZH lang = "zh-TW"
+)
+
+// parseLang reads the optional ?lang= parameter; English is the default.
+func parseLang(r *http.Request) (lang, bool) {
+	switch raw := r.URL.Query().Get("lang"); raw {
+	case "", "en":
+		return langEN, true
+	case "zh-TW":
+		return langZH, true
+	default:
+		return "", false
+	}
+}
+
+// text picks the text for l, falling back to English while a translation is
+// still missing so that a page never shows a hole.
+func (l lang) text(en, zh string) string {
+	if l == langZH && zh != "" {
+		return zh
+	}
+	return en
+}
+
 func (s *Server) listEvents(w http.ResponseWriter, r *http.Request) {
+	l, ok := parseLang(r)
+	if !ok {
+		s.writeError(w, http.StatusBadRequest, "invalid_lang", "lang must be en or zh-TW")
+		return
+	}
 	params := db.ListEventsParams{
 		CursorUpdatedAt: time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC),
 		CursorID:        math.MaxInt64,
@@ -98,18 +133,23 @@ func (s *Server) listEvents(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		page.Events = append(page.Events, EventSummary{
 			ID:                row.ID,
-			Title:             row.Title,
+			Title:             l.text(row.Title, row.TitleZh),
 			FirstSeenAt:       row.FirstSeenAt,
 			UpdatedAt:         row.UpdatedAt,
 			ArticleCount:      row.ArticleCount,
 			OutletCount:       row.OutletCount,
-			LatestDevelopment: row.LatestDevelopment,
+			LatestDevelopment: l.text(row.LatestDevelopment, row.LatestDevelopmentZh),
 		})
 	}
 	s.writeJSON(w, http.StatusOK, page)
 }
 
 func (s *Server) getEvent(w http.ResponseWriter, r *http.Request) {
+	l, ok := parseLang(r)
+	if !ok {
+		s.writeError(w, http.StatusBadRequest, "invalid_lang", "lang must be en or zh-TW")
+		return
+	}
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id < 1 {
 		s.writeError(w, http.StatusNotFound, "not_found", "event not found")
@@ -129,10 +169,10 @@ func (s *Server) getEvent(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
-	articles, timeline := buildEventBody(rows)
+	articles, timeline := buildEventBody(rows, l)
 	s.writeJSON(w, http.StatusOK, EventDetail{
 		ID:           event.ID,
-		Title:        event.Title,
+		Title:        l.text(event.Title, event.TitleZh),
 		FirstSeenAt:  event.FirstSeenAt,
 		UpdatedAt:    event.UpdatedAt,
 		ArticleCount: event.ArticleCount,

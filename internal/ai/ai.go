@@ -7,7 +7,7 @@ import "context"
 
 // PromptVersion is recorded on every summary. Bump it whenever a prompt file
 // changes in a way that could change outputs.
-const PromptVersion = "v2"
+const PromptVersion = "v3"
 
 type Client interface {
 	// SummarizeArticle analyzes one article on its own: no other article's
@@ -17,6 +17,10 @@ type Client interface {
 	LinkToEvent(ctx context.Context, in LinkInput) (LinkDecision, error)
 	// TitleEvent writes a short factual title for a new event.
 	TitleEvent(ctx context.Context, in TitleInput) (string, error)
+	// Translate writes Traditional Chinese versions of the site's own English
+	// text. It backfills older rows and titles new events; new article
+	// summaries are written in Chinese directly from the source article.
+	Translate(ctx context.Context, in TranslateInput) (Translation, error)
 	// Model names the model behind this client, for the summaries table.
 	Model() string
 }
@@ -48,6 +52,10 @@ type Entity struct {
 type ArticleAnalysis struct {
 	// Summary is 2–4 English sentences that keep the article's own framing.
 	Summary string `json:"summary"`
+	// SummaryZh and DevelopmentZh are the same two fields in Traditional Chinese
+	// (Taiwan usage), written from the article itself under the same rules.
+	SummaryZh     string `json:"summary_zh"`
+	DevelopmentZh string `json:"development_zh"`
 	// Development is the one new development the article reports, as a short
 	// neutral English line; empty for explainers and side stories.
 	Development string `json:"development"`
@@ -95,4 +103,21 @@ type TitleInput struct {
 	Headline    string
 	Summary     string
 	Development string
+}
+
+// TranslateInput is English text to render in Traditional Chinese. Empty
+// fields are skipped and come back empty.
+type TranslateInput struct {
+	Title       string
+	Summary     string
+	Development string
+	// Names are the people, organizations and places the text refers to, in the
+	// original script. The translation must use these forms, not its own guess.
+	Names []string
+}
+
+type Translation struct {
+	Title       string `json:"title"`
+	Summary     string `json:"summary"`
+	Development string `json:"development"`
 }

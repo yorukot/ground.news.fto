@@ -41,7 +41,7 @@ SELECT model, prompt_version FROM summaries WHERE article_id = $1;
 
 -- name: SetArticleAnalysis :exec
 UPDATE articles
-SET development = $2, happened_on = $3, date_is_approximate = $4
+SET development = $2, development_zh = $3, happened_on = $4, date_is_approximate = $5
 WHERE id = $1;
 
 -- name: GetArticleForLink :one
@@ -144,3 +144,52 @@ LIMIT sqlc.arg(max_results);
 -- Attaches without touching the timeline or the event's updated time: a
 -- headline tells us an outlet covered the event, not what it reported.
 UPDATE articles SET event_id = $2, link_confidence = $3 WHERE id = $1;
+
+-- name: SetEventTitleZh :exec
+UPDATE events SET title_zh = $2 WHERE id = $1;
+
+-- name: SetArticleZh :exec
+-- Fills the Traditional Chinese text of an analyzed article. An empty value
+-- keeps what is already stored, so a partial translation never erases text.
+UPDATE articles SET development_zh = COALESCE(NULLIF(sqlc.arg(development_zh)::text, ''), development_zh)
+WHERE id = sqlc.arg(id);
+
+-- name: SetSummaryZh :exec
+UPDATE summaries SET text_zh = sqlc.arg(text_zh) WHERE article_id = sqlc.arg(article_id);
+
+-- name: ListEventsMissingZh :many
+-- Events still without a Chinese title, with the original-script entity names
+-- the translation must reuse. Only events that are shown (have articles).
+SELECT
+    e.id,
+    e.title,
+    COALESCE((
+        SELECT array_agg(en.canonical_name ORDER BY en.id)
+        FROM event_entities ee JOIN entities en ON en.id = ee.entity_id
+        WHERE ee.event_id = e.id
+    ), '{}')::text[] AS names
+FROM events e
+WHERE e.title_zh = ''
+  AND EXISTS (SELECT 1 FROM articles a WHERE a.event_id = e.id)
+ORDER BY e.updated_at DESC
+LIMIT sqlc.arg(max_results);
+
+-- name: ListArticlesMissingZh :many
+-- Analyzed articles whose summary or timeline line has no Chinese version yet.
+SELECT
+    a.id,
+    a.development,
+    a.development_zh,
+    s.text AS summary,
+    s.text_zh AS summary_zh,
+    COALESCE((
+        SELECT array_agg(en.canonical_name ORDER BY en.id)
+        FROM article_entities ae JOIN entities en ON en.id = ae.entity_id
+        WHERE ae.article_id = a.id
+    ), '{}')::text[] AS names
+FROM articles a
+JOIN summaries s ON s.article_id = a.id
+WHERE (s.text_zh = '' AND s.text <> '')
+   OR (a.development_zh = '' AND a.development <> '')
+ORDER BY a.published_at DESC
+LIMIT sqlc.arg(max_results);

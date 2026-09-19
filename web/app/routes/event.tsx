@@ -5,11 +5,13 @@ import { Timeline } from "~/components/Timeline/Timeline";
 import { useI18n } from "~/i18n/i18n";
 import { getEvent } from "~/lib/api.server";
 import { messagesFor, pageMeta } from "~/lib/meta";
+import { readPreferences } from "~/lib/preferences";
 import type { Route } from "./+types/event";
 import styles from "./event.module.css";
 
 export async function loader({ params, request }: Route.LoaderArgs) {
-  return getEvent(params.id, request.signal);
+  const { locale } = readPreferences(request.headers.get("Cookie"));
+  return getEvent(params.id, request.signal, locale);
 }
 
 export function meta({ loaderData, matches }: Route.MetaArgs) {

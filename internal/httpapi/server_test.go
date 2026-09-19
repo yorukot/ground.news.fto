@@ -37,7 +37,7 @@ func (f *fakeStore) ListEvents(_ context.Context, arg db.ListEventsParams) ([]db
 func (f *fakeStore) GetEvent(_ context.Context, id int64) (db.GetEventRow, error) {
 	for _, e := range f.events {
 		if e.ID == id {
-			return db.GetEventRow{ID: e.ID, Title: e.Title, FirstSeenAt: e.FirstSeenAt, UpdatedAt: e.UpdatedAt}, nil
+			return db.GetEventRow{ID: e.ID, Title: e.Title, TitleZh: e.TitleZh, FirstSeenAt: e.FirstSeenAt, UpdatedAt: e.UpdatedAt}, nil
 		}
 	}
 	return db.GetEventRow{}, pgx.ErrNoRows
@@ -104,7 +104,7 @@ func TestListEventsPaginates(t *testing.T) {
 
 func TestListEventsRejectsBadInput(t *testing.T) {
 	h := newTestServer(&fakeStore{})
-	for _, path := range []string{"/api/v1/events?limit=0", "/api/v1/events?limit=999", "/api/v1/events?cursor=%21%21"} {
+	for _, path := range []string{"/api/v1/events?limit=0", "/api/v1/events?limit=999", "/api/v1/events?cursor=%21%21", "/api/v1/events?lang=fr", "/api/v1/events/1?lang=fr"} {
 		if code := get(t, h, path, nil); code != http.StatusBadRequest {
 			t.Errorf("%s: status %d, want 400", path, code)
 		}
@@ -207,5 +207,54 @@ func TestResponsesNeverContainBody(t *testing.T) {
 	newTestServer(store).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/events/1", nil))
 	if strings.Contains(rec.Body.String(), `"body"`) {
 		t.Fatal("article body must never be served")
+	}
+}
+
+func TestLangSelectsSiteText(t *testing.T) {
+	now := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	store := &fakeStore{
+		events: []db.ListEventsRow{
+			{ID: 2, Title: "Untranslated event", LatestDevelopment: "Untranslated step", UpdatedAt: now},
+			{ID: 1, Title: "Bus fare case", TitleZh: "公車票價案", LatestDevelopment: "Fares frozen", LatestDevelopmentZh: "票價凍漲", UpdatedAt: now.Add(-time.Hour)},
+		},
+		articles: map[int64][]db.ListEventArticlesRow{1: {{
+			ID: 10, OutletID: 1, OutletSlug: "cna", OutletName: "中央社", Headline: "原標題", PublishedAt: now,
+			StepArticleID: pgtype.Int8{Int64: 10, Valid: true}, HappenedOn: pgtype.Date{Time: now, Valid: true},
+			Development: "Fares frozen", DevelopmentZh: "票價凍漲", Summary: "The article says…", SummaryZh: "報導指出…",
+		}}},
+	}
+	h := newTestServer(store)
+
+	for _, tc := range []struct {
+		query                string
+		title, latest, extra string
+	}{
+		{"", "Bus fare case", "Fares frozen", "The article says…"},
+		{"?lang=en", "Bus fare case", "Fares frozen", "The article says…"},
+		{"?lang=zh-TW", "公車票價案", "票價凍漲", "報導指出…"},
+	} {
+		var page EventsPage
+		if code := get(t, h, "/api/v1/events"+tc.query, &page); code != http.StatusOK {
+			t.Fatalf("list %q: status %d", tc.query, code)
+		}
+		// Event 2 has no Chinese text yet, so it is served in English either way.
+		if got := page.Events[0].Title; got != "Untranslated event" {
+			t.Errorf("list %q: untranslated title = %q, want the English fallback", tc.query, got)
+		}
+		if e := page.Events[1]; e.Title != tc.title || e.LatestDevelopment != tc.latest {
+			t.Errorf("list %q: got %q / %q, want %q / %q", tc.query, e.Title, e.LatestDevelopment, tc.title, tc.latest)
+		}
+
+		var detail EventDetail
+		if code := get(t, h, "/api/v1/events/1"+tc.query, &detail); code != http.StatusOK {
+			t.Fatalf("detail %q: status %d", tc.query, code)
+		}
+		if detail.Title != tc.title || detail.Timeline[0].Development != tc.latest || detail.Articles[0].Summary != tc.extra {
+			t.Errorf("detail %q: got %q / %q / %q", tc.query, detail.Title, detail.Timeline[0].Development, detail.Articles[0].Summary)
+		}
+		// The original headline and outlet name are never translated.
+		if detail.Articles[0].Headline != "原標題" || detail.Articles[0].Outlet.Name != "中央社" {
+			t.Errorf("detail %q: original text changed: %+v", tc.query, detail.Articles[0])
+		}
 	}
 }

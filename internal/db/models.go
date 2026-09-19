@@ -27,6 +27,7 @@ type Article struct {
 	DateIsApproximate bool
 	StepArticleID     pgtype.Int8
 	LinkConfidence    pgtype.Float4
+	DevelopmentZh     string
 }
 
 type ArticleEntity struct {
@@ -49,6 +50,7 @@ type Event struct {
 	UpdatedAt    time.Time
 	TimelineText string
 	Search       interface{}
+	TitleZh      string
 }
 
 type EventEntity struct {
@@ -75,4 +77,5 @@ type Summary struct {
 	Model         string
 	PromptVersion string
 	CreatedAt     time.Time
+	TextZh        string
 }
