@@ -9,6 +9,7 @@ const article: Article = {
   outlet: { id: 1, slug: "cna", name: "中央社" },
   headline: "【範例】原始標題",
   url: "https://example.com/a",
+  imageUrl: "",
   publishedAt: "2026-09-01T02:00:00Z",
   summary: "A short summary.",
   headlineOnly: false,

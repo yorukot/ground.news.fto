@@ -1,6 +1,6 @@
 # Docs
 
-Design and architecture docs for Ground News for Taiwan. The code follows these docs; when the two disagree, fix one of them.
+Design and architecture docs for What The F-- / 跨三小. The code follows these docs; when the two disagree, fix one of them.
 
 | Doc | What it covers |
 | --- | --- |
@@ -41,7 +41,7 @@ Design and architecture docs for Ground News for Taiwan. The code follows these 
 - **Topic scope.** Several outlets' sitemaps mix sports, entertainment and lifestyle with news. What the site should cover is a product decision; a filter is easy to add once it's made.
 
 - The seed color is the M3 baseline violet (`#6750A4`) for now; try alternatives in Material Theme Builder before launch. Constraints are in [design-system.md](design-system.md#color).
-- The site name ("Ground News Taiwan" / "新聞並陳") is a placeholder, defined only in `web/app/i18n/messages/`.
+- The site brand is "What The F--" in English and "跨三小" in Traditional Chinese, defined in `web/app/i18n/messages/`.
 - Should summaries and timeline lines also be produced in Chinese for the zh-TW locale? Today they exist in one language (English); the UI chrome is what gets translated.
 - Hosting target (single VPS with Docker Compose is assumed).
 - The summary model is `rlongAI/gpt-5.5` through a LiteLLM proxy, which exposes aliases rather than dated snapshots; revisit if a pinned snapshot becomes available.

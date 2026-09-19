@@ -19,7 +19,7 @@ export function meta({ matches }: Route.MetaArgs) {
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { m } = useI18n();
+  const { m, locale } = useI18n();
   const more = useFetcher<typeof loader>();
   const [extra, setExtra] = useState<EventSummary[]>([]);
   const [nextCursor, setNextCursor] = useState(loaderData.nextCursor);
@@ -42,21 +42,79 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
   const firstIds = new Set(loaderData.events.map((event) => event.id));
   const events = [...loaderData.events, ...extra.filter((event) => !firstIds.has(event.id))];
+  const [featured, ...stories] = events;
   const loading = more.state !== "idle";
 
   return (
-    <>
-      <h1 className={`${styles.heading} md-headline-small`}>{m.home.title}</h1>
-      {events.length === 0 ? (
-        <p className={`${styles.empty} md-body-large`}>{m.home.empty}</p>
-      ) : (
-        <ul className={styles.grid}>
-          {events.map((event) => (
-            <li key={event.id}>
-              <EventCard event={event} />
-            </li>
-          ))}
-        </ul>
+    <div className={styles.page}>
+      <section className={styles.hero} aria-labelledby="home-heading">
+        <section className={styles.intro}>
+          {locale === "zh-TW" && (
+            <p className={`${styles.kicker} md-label-large`}>{m.home.kicker}</p>
+          )}
+          <h1 id="home-heading" className={styles.heading} aria-label={m.home.brandLabel}>
+            {locale === "zh-TW" ? (
+              <span className={styles.zhWordmark} aria-hidden="true">
+                <span>{m.home.title}</span>
+                <span className={styles.zhWindow}>
+                  <span className={styles.wordTrack}>
+                    {[...m.home.rotatingWords, m.home.rotatingWords[0]].map((word, index) => (
+                      <span key={`${word}-${index}`}>{word}</span>
+                    ))}
+                  </span>
+                </span>
+              </span>
+            ) : (
+              <span className={styles.enWordmark} aria-hidden="true">
+                <span>
+                  <strong>W</strong>hat
+                </span>
+                <span>
+                  <strong>T</strong>he
+                </span>
+                <span className={styles.enChanging}>
+                  <strong>F</strong>
+                  <span className={styles.enWindow}>
+                    <span className={styles.wordTrack}>
+                      {[...m.home.rotatingWords, m.home.rotatingWords[0]].map((word, index) => (
+                        <span key={`${word}-${index}`}>{word}</span>
+                      ))}
+                    </span>
+                  </span>
+                </span>
+              </span>
+            )}
+          </h1>
+          <p className={`${styles.description} md-body-large`}>{m.home.intro}</p>
+          {events.length === 0 && <p className={`${styles.empty} md-body-large`}>{m.home.empty}</p>}
+          <div className={styles.promise} aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+        </section>
+        {featured && <EventCard event={featured} variant="featured" />}
+      </section>
+
+      {stories.length > 0 && (
+        <section className={styles.feed} aria-labelledby="latest-heading">
+          <header className={styles.sectionHeader}>
+            <div>
+              <p className={`${styles.sectionKicker} md-label-medium`}>{m.home.kicker}</p>
+              <h2 id="latest-heading" className={styles.sectionTitle}>
+                {m.home.latest}
+              </h2>
+            </div>
+            <p className={`${styles.sectionIntro} md-body-medium`}>{m.home.latestIntro}</p>
+          </header>
+          <ul className={styles.grid}>
+            {stories.map((event) => (
+              <li key={event.id}>
+                <EventCard event={event} />
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
       {nextCursor && (
         // A plain GET form: without JavaScript it navigates to the next page.
@@ -67,6 +125,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           </Button>
         </more.Form>
       )}
-    </>
+    </div>
   );
 }

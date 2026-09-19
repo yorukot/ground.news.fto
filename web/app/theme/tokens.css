@@ -89,6 +89,50 @@
   --layout-gap: var(--space-2);
   --layout-content-max: 1200px;
   --layout-reading-max: 40em;
+
+  /* Editorial palette. It stays politically neutral while giving news cards
+     and navigation a stronger newsroom hierarchy than the control palette. */
+  --news-ink: #122130;
+  --news-ink-raised: #1a3042;
+  --news-ink-soft: #243746;
+  --news-on-ink: #f8faf5;
+  --news-accent: #d8ef68;
+  --news-accent-strong: #718c17;
+  --news-paper: #f4f5f0;
+  --news-card: #ffffff;
+  --news-border: #d9ded8;
+  --news-line: #122130;
+  --news-muted: #64727b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --news-ink: #09131c;
+    --news-ink-raised: #122534;
+    --news-ink-soft: #e5ece8;
+    --news-on-ink: #f8faf5;
+    --news-accent: #d8ef68;
+    --news-accent-strong: #bed34f;
+    --news-paper: #111b22;
+    --news-card: #19262e;
+    --news-border: #33434b;
+    --news-line: #b9c8c5;
+    --news-muted: #aebbc0;
+  }
+}
+
+:root[data-theme="dark"] {
+  --news-ink: #09131c;
+  --news-ink-raised: #122534;
+  --news-ink-soft: #e5ece8;
+  --news-on-ink: #f8faf5;
+  --news-accent: #d8ef68;
+  --news-accent-strong: #bed34f;
+  --news-paper: #111b22;
+  --news-card: #19262e;
+  --news-border: #33434b;
+  --news-line: #b9c8c5;
+  --news-muted: #aebbc0;
 }
 
 @media (min-width: 600px) {

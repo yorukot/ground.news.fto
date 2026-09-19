@@ -16,8 +16,8 @@ body {
   /* Base UI: iOS 26+ Safari needs this for dialog backdrops to cover the viewport. */
   position: relative;
   min-height: 100dvh;
-  background: var(--md-sys-color-surface);
-  color: var(--md-sys-color-on-surface);
+  background: var(--news-paper);
+  color: var(--news-ink-soft);
   font-family: var(--md-ref-typeface-plain);
   font-size: var(--md-sys-typescale-body-large-size);
   line-height: var(--md-sys-typescale-body-large-line-height);

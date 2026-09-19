@@ -131,6 +131,7 @@ func TestGetEventBuildsTimelineAndFoldsReprints(t *testing.T) {
 	wire.Development, wire.StepArticleID = "first step", int8v(1)
 	wire.HappenedOn = pgtype.Date{Time: t0, Valid: true}
 	wire.Summary = "summary"
+	wire.ImageUrl = "https://example.com/story.jpg"
 
 	reprint := row(2, "udn", t0.Add(time.Hour))
 	reprint.ReprintOfID = int8v(1)
@@ -174,6 +175,9 @@ func TestGetEventBuildsTimelineAndFoldsReprints(t *testing.T) {
 	}
 	if wireCard == nil || len(wireCard.Reprints) != 1 || wireCard.Reprints[0].Outlet.Slug != "udn" {
 		t.Fatalf("wire card reprints = %+v", wireCard)
+	}
+	if wireCard.ImageURL != wire.ImageUrl {
+		t.Errorf("wire card image = %q, want %q", wireCard.ImageURL, wire.ImageUrl)
 	}
 
 	if len(got.Timeline) != 2 {

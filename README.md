@@ -1,6 +1,6 @@
-# Ground News for Taiwan
+# What The F-- / 跨三小
 
-Every outlet's coverage of the same event, side by side, with a short summary of each article and a timeline of the event. The site never labels or scores an outlet or an article; readers compare for themselves.
+Facts. Focus. Frames. Every outlet's coverage of the same event, side by side, with a short summary of each article and a timeline of the event. The site never labels or scores an outlet or an article; readers compare for themselves.
 
 - [plan.md](plan.md): what the product is and how the pipeline works
 - [docs/](docs/README.md): tech stack, Material Design 3 design system, components and pages

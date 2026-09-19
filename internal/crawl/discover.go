@@ -22,6 +22,8 @@ type Found struct {
 	// Title is the headline as the feed or news sitemap gives it. It is all
 	// a headline-only outlet's article ever has.
 	Title string
+	// ImageURL is an image advertised by the feed or news sitemap.
+	ImageURL string
 	// PublishedAt is the feed's date, used only if the page itself has none.
 	PublishedAt time.Time
 }
@@ -35,13 +37,16 @@ const maxChildSitemaps = 2
 func (f *Fetcher) Discover(ctx context.Context, cfg Config, pattern *regexp.Regexp, purpose Purpose) []Found {
 	seen := make(map[string]bool)
 	var out []Found
-	add := func(raw, title string, at time.Time) {
+	add := func(raw, title, imageURL string, at time.Time) {
 		clean := CanonicalURL(raw)
 		if clean == "" || seen[clean] || (pattern != nil && !pattern.MatchString(clean)) {
 			return
 		}
 		seen[clean] = true
-		out = append(out, Found{URL: clean, Title: cleanText(html.UnescapeString(title)), PublishedAt: at})
+		out = append(out, Found{
+			URL: clean, Title: cleanText(html.UnescapeString(title)),
+			ImageURL: strings.TrimSpace(imageURL), PublishedAt: at,
+		})
 	}
 
 	for _, feedURL := range cfg.Feeds {
@@ -60,13 +65,25 @@ func (f *Fetcher) Discover(ctx context.Context, cfg Config, pattern *regexp.Rege
 			if item.PublishedParsed != nil {
 				at = *item.PublishedParsed
 			}
-			add(item.Link, item.Title, at)
+			imageURL := ""
+			if item.Image != nil {
+				imageURL = item.Image.URL
+			}
+			if imageURL == "" {
+				for _, enclosure := range item.Enclosures {
+					if strings.HasPrefix(enclosure.Type, "image/") {
+						imageURL = enclosure.URL
+						break
+					}
+				}
+			}
+			add(item.Link, item.Title, imageURL, at)
 		}
 	}
 
 	for _, sitemapURL := range cfg.Sitemaps {
 		for _, e := range f.readSitemap(ctx, sitemapURL, purpose, true) {
-			add(e.URL, e.Title, e.PublishedAt)
+			add(e.URL, e.Title, e.ImageURL, e.PublishedAt)
 		}
 	}
 
@@ -111,6 +128,9 @@ type sitemapDoc struct {
 			PublicationDate string `xml:"publication_date"`
 			Title           string `xml:"title"`
 		} `xml:"news"`
+		Images []struct {
+			Loc string `xml:"loc"`
+		} `xml:"image"`
 	} `xml:"url"`
 }
 
@@ -125,7 +145,14 @@ func parseSitemap(body []byte) ([]Found, error) {
 		if at.IsZero() {
 			at = parseTime(u.LastMod)
 		}
-		out = append(out, Found{URL: strings.TrimSpace(u.Loc), Title: u.News.Title, PublishedAt: at})
+		imageURL := ""
+		if len(u.Images) > 0 {
+			imageURL = strings.TrimSpace(u.Images[0].Loc)
+		}
+		out = append(out, Found{
+			URL: strings.TrimSpace(u.Loc), Title: u.News.Title,
+			ImageURL: imageURL, PublishedAt: at,
+		})
 	}
 	return out, nil
 }

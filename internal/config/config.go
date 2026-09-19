@@ -35,7 +35,7 @@ func Load() (Config, error) {
 		OpenAIAPIKey:       os.Getenv("OPENAI_API_KEY"),
 		OpenAIBaseURL:      os.Getenv("OPENAI_BASE_URL"),
 		OpenAISummaryModel: os.Getenv("OPENAI_SUMMARY_MODEL"),
-		CrawlerUserAgent:   envOr("CRAWLER_USER_AGENT", "GroundNewsTW-bot/0.1"),
+		CrawlerUserAgent:   envOr("CRAWLER_USER_AGENT", "WhatTheF-bot/0.1"),
 	}
 	c.CrawlMaxNewPerRun = 40
 	if raw := os.Getenv("CRAWL_MAX_NEW_PER_RUN"); raw != "" {

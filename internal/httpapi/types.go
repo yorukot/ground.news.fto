@@ -20,6 +20,7 @@ type EventSummary struct {
 	ArticleCount      int64     `json:"articleCount"`
 	OutletCount       int64     `json:"outletCount"`
 	LatestDevelopment string    `json:"latestDevelopment"`
+	ImageURL          string    `json:"imageUrl"`
 }
 
 type EventsPage struct {
@@ -63,6 +64,7 @@ type Article struct {
 	Outlet      Outlet    `json:"outlet"`
 	Headline    string    `json:"headline"`
 	URL         string    `json:"url"`
+	ImageURL    string    `json:"imageUrl"`
 	PublishedAt time.Time `json:"publishedAt"`
 	Summary     string    `json:"summary"`
 	// HeadlineOnly is true for outlets that don't allow AI use of their

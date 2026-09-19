@@ -22,6 +22,15 @@ export function ArticleCard({ article }: { article: Article }) {
       className={styles.card}
       aria-labelledby={headingId}
     >
+      {article.imageUrl && (
+        <img
+          className={styles.image}
+          src={article.imageUrl}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+        />
+      )}
       <p className={styles.meta}>
         <span className="md-label-large" lang={CONTENT_LANG}>
           {article.outlet.name}

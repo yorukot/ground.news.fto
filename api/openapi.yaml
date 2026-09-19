@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: Ground News for Taiwan API
+  title: What The F-- API
   version: 0.1.0
   description: >
     Read-only public API. Article text is never served: only the original
@@ -87,7 +87,7 @@ components:
         domain: { type: string }
     EventSummary:
       type: object
-      required: [id, title, firstSeenAt, updatedAt, articleCount, outletCount, latestDevelopment]
+      required: [id, title, firstSeenAt, updatedAt, articleCount, outletCount, latestDevelopment, imageUrl]
       properties:
         id: { type: integer, format: int64 }
         title: { type: string }
@@ -98,6 +98,9 @@ components:
         latestDevelopment:
           type: string
           description: The most recent timeline step; empty when the event has none.
+        imageUrl:
+          type: string
+          description: The newest source image available for this event; empty when unavailable.
     EventsPage:
       type: object
       required: [events, nextCursor]
@@ -155,7 +158,7 @@ components:
         publishedAt: { type: string, format: date-time }
     Article:
       type: object
-      required: [id, outlet, headline, url, publishedAt, summary, headlineOnly, reprints]
+      required: [id, outlet, headline, url, imageUrl, publishedAt, summary, headlineOnly, reprints]
       properties:
         id: { type: integer, format: int64 }
         outlet: { $ref: "#/components/schemas/Outlet" }
@@ -163,6 +166,9 @@ components:
           type: string
           description: The original headline, unchanged.
         url: { type: string, format: uri }
+        imageUrl:
+          type: string
+          description: The source article's advertised image URL; empty when unavailable.
         publishedAt: { type: string, format: date-time }
         summary:
           type: string

@@ -42,6 +42,7 @@ func storeHeadlines(ctx context.Context, d Deps, outletID int64, found []crawl.F
 				OutletID:    outletID,
 				Url:         f.URL,
 				Headline:    f.Title,
+				ImageUrl:    f.ImageURL,
 				PublishedAt: f.PublishedAt,
 				ContentHash: hex.EncodeToString(sum[:]),
 			})

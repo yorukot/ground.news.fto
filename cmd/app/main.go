@@ -37,6 +37,8 @@ commands:
   worker    run the ingestion pipeline (crawl, dedupe, summarize, link)
   migrate   apply database migrations
   seed      register outlets; add --samples for fictional sample events
+  backfill-images
+            fetch source image metadata for existing articles
   crawl-check <outlet-slug>
             discover an outlet's feeds and extract one article, without
             storing anything; use it before enabling an outlet
@@ -82,6 +84,16 @@ func run(ctx context.Context, command string, args []string) error {
 		return seed.Run(ctx, pool, *samples)
 	case "serve":
 		return serve(ctx, cfg)
+	case "backfill-images":
+		fs := flag.NewFlagSet("backfill-images", flag.ExitOnError)
+		limit := fs.Int("limit", 200, "maximum number of articles to inspect")
+		if err := fs.Parse(args); err != nil {
+			return err
+		}
+		if *limit < 1 {
+			return errors.New("limit must be positive")
+		}
+		return backfillImages(ctx, cfg, *limit)
 	case "crawl-check":
 		if len(args) != 1 {
 			return fmt.Errorf("usage: app crawl-check <outlet-slug>")
@@ -93,6 +105,42 @@ func run(ctx context.Context, command string, args []string) error {
 		fmt.Fprint(os.Stderr, usage)
 		return fmt.Errorf("unknown command %q", command)
 	}
+}
+
+// backfillImages stores publisher-advertised image URLs for articles that
+// predate the image column. It fetches pages for indexing only, respects
+// robots.txt, and never extracts or stores article text.
+func backfillImages(ctx context.Context, cfg config.Config, limit int) error {
+	pool, err := db.NewPool(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	q := db.New(pool)
+	articles, err := q.ListArticlesMissingImage(ctx, int32(limit))
+	if err != nil {
+		return fmt.Errorf("list articles missing images: %w", err)
+	}
+	fetcher := crawl.NewFetcher(cfg.CrawlerUserAgent, hostDelay)
+	stored := 0
+	for _, article := range articles {
+		page, finalURL, err := fetcher.GetFor(ctx, article.Url, crawl.ForIndex)
+		if err != nil {
+			slog.Warn("image metadata fetch failed", "url", article.Url, "error", err)
+			continue
+		}
+		imageURL := crawl.ExtractImage(page, finalURL)
+		if imageURL == "" {
+			continue
+		}
+		if err := q.SetArticleImage(ctx, db.SetArticleImageParams{ID: article.ID, ImageUrl: imageURL}); err != nil {
+			return fmt.Errorf("store image for article %d: %w", article.ID, err)
+		}
+		stored++
+	}
+	slog.Info("image backfill complete", "inspected", len(articles), "stored", stored)
+	return nil
 }
 
 // crawlCheck runs discovery and one extraction for an outlet from the seed

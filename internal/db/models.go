@@ -27,6 +27,7 @@ type Article struct {
 	DateIsApproximate bool
 	StepArticleID     pgtype.Int8
 	LinkConfidence    pgtype.Float4
+	ImageUrl          string
 }
 
 type ArticleEntity struct {

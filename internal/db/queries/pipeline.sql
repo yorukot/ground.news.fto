@@ -5,8 +5,8 @@ SELECT url FROM articles WHERE url = ANY(sqlc.arg(urls)::text[]);
 
 -- name: InsertFetchedArticle :one
 -- Returns no row when the URL is already stored, which makes a retried fetch a no-op.
-INSERT INTO articles (outlet_id, url, headline, body, published_at, content_hash, minhash)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO articles (outlet_id, url, headline, image_url, body, published_at, content_hash, minhash)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (url) DO NOTHING
 RETURNING id;
 
@@ -116,10 +116,40 @@ ORDER BY e.id;
 -- name: InsertHeadlineArticle :one
 -- A headline-only article: feed metadata and nothing else. The body stays
 -- empty because the page is never fetched.
-INSERT INTO articles (outlet_id, url, headline, body, published_at, content_hash, minhash)
-VALUES ($1, $2, $3, '', $4, $5, '{}')
+INSERT INTO articles (outlet_id, url, headline, image_url, body, published_at, content_hash, minhash)
+VALUES ($1, $2, $3, $4, '', $5, $6, '{}')
 ON CONFLICT (url) DO NOTHING
 RETURNING id;
+
+-- name: ListArticlesMissingImage :many
+WITH ranked AS (
+    SELECT
+        a.id,
+        a.url,
+        a.event_id,
+        e.updated_at AS event_updated_at,
+        a.published_at,
+        row_number() OVER (PARTITION BY a.event_id ORDER BY a.published_at DESC, a.id DESC) AS event_rank,
+        EXISTS (
+            SELECT 1 FROM articles image
+            WHERE image.event_id = a.event_id AND image.image_url <> ''
+        ) AS event_has_image
+    FROM articles a
+    LEFT JOIN events e ON e.id = a.event_id
+    WHERE a.image_url = ''
+)
+SELECT id, url
+FROM ranked
+ORDER BY
+    (event_id IS NOT NULL AND NOT event_has_image AND event_rank = 1) DESC,
+    (event_id IS NOT NULL) DESC,
+    event_updated_at DESC NULLS LAST,
+    published_at DESC,
+    id DESC
+LIMIT sqlc.arg(max_results);
+
+-- name: SetArticleImage :exec
+UPDATE articles SET image_url = $2 WHERE id = $1 AND image_url = '';
 
 -- name: GetHeadlineArticle :one
 SELECT id, headline, published_at, first_seen_at, event_id FROM articles WHERE id = $1;

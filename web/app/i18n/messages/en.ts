@@ -6,11 +6,10 @@ const count = (n: number, one: string, other: string) =>
 
 export const en = {
   site: {
-    // Placeholder working name; change it here only.
-    name: "Ground News Taiwan",
-    tagline: "One event, every outlet's coverage",
+    name: "What The F--",
+    tagline: "Facts. Focus. Frames.",
     description:
-      "Every outlet's coverage of the same event, side by side, with a short summary of each article and a timeline of the event. The site never labels or scores an outlet or an article; readers compare for themselves.",
+      "What The F-- puts every outlet's coverage of the same event side by side, with article summaries and a timeline of what happened.",
   },
   nav: {
     label: "Main",
@@ -31,12 +30,22 @@ export const en = {
     loading: "Loading page",
   },
   home: {
-    title: "Current events",
+    title: "What The F--",
+    brandLabel: "What The Facts. What The Focus. What The Frames.",
+    rotatingWords: ["ACTS", "OCUS", "RAMES"],
+    kicker: "Facts. Focus. Frames.",
+    intro:
+      "See one developing event across Taiwan's newsrooms, compare each frame, then follow the facts on the timeline.",
+    featured: "Top story",
+    latest: "Latest stories",
+    latestIntro: "Recently updated events, ordered by the newest reporting.",
     empty: "No events yet.",
     loadMore: "Load more",
     loadingMore: "Loading…",
   },
   eventCard: {
+    developing: "Developing",
+    latest: "Latest development",
     outlets: (n: number) => count(n, "outlet", "outlets"),
     articles: (n: number) => count(n, "article", "articles"),
     updated: "Updated",

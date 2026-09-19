@@ -61,6 +61,7 @@ SELECT
     a.id,
     a.url,
     a.headline,
+    a.image_url,
     a.published_at,
     a.reprint_of_id,
     a.development,
@@ -83,6 +84,7 @@ type ListEventArticlesRow struct {
 	ID                int64
 	Url               string
 	Headline          string
+	ImageUrl          string
 	PublishedAt       time.Time
 	ReprintOfID       pgtype.Int8
 	Development       string
@@ -111,6 +113,7 @@ func (q *Queries) ListEventArticles(ctx context.Context, eventID int64) ([]ListE
 			&i.ID,
 			&i.Url,
 			&i.Headline,
+			&i.ImageUrl,
 			&i.PublishedAt,
 			&i.ReprintOfID,
 			&i.Development,

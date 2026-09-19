@@ -117,7 +117,7 @@ func (w *CrawlOutletWorker) Work(ctx context.Context, job *river.Job[CrawlOutlet
 		if !f.PublishedAt.IsZero() && time.Since(f.PublishedAt) > maxArticleAge {
 			continue
 		}
-		args := FetchArticleArgs{OutletID: outlet.ID, URL: f.URL}
+		args := FetchArticleArgs{OutletID: outlet.ID, URL: f.URL, FeedImageURL: f.ImageURL}
 		if !f.PublishedAt.IsZero() {
 			args.FeedPublishedAt = &f.PublishedAt
 		}
@@ -135,6 +135,7 @@ type FetchArticleArgs struct {
 	URL      string `json:"url" river:"unique"`
 	// FeedPublishedAt is the feed's date, used when the page itself has none.
 	FeedPublishedAt *time.Time `json:"feed_published_at,omitempty"`
+	FeedImageURL    string     `json:"feed_image_url,omitempty"`
 }
 
 func (FetchArticleArgs) Kind() string { return "fetch_article" }
@@ -183,6 +184,9 @@ func (w *FetchArticleWorker) Work(ctx context.Context, job *river.Job[FetchArtic
 	if err != nil {
 		return err
 	}
+	if art.ImageURL == "" {
+		art.ImageURL = job.Args.FeedImageURL
+	}
 
 	outletID := outlet.ID
 	if outlet.IsAggregator {
@@ -214,6 +218,7 @@ func (w *FetchArticleWorker) Work(ctx context.Context, job *river.Job[FetchArtic
 			OutletID:    outletID,
 			Url:         job.Args.URL,
 			Headline:    art.Headline,
+			ImageUrl:    art.ImageURL,
 			Body:        art.Body,
 			PublishedAt: publishedAt,
 			ContentHash: hex.EncodeToString(sum[:]),

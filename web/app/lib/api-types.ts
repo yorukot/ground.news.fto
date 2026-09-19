@@ -84,6 +84,8 @@ export interface components {
             outletCount: number;
             /** @description The most recent timeline step; empty when the event has none. */
             latestDevelopment: string;
+            /** @description The newest source image available for this event; empty when unavailable. */
+            imageUrl: string;
         };
         EventsPage: {
             events: components["schemas"]["EventSummary"][];
@@ -138,6 +140,8 @@ export interface components {
             headline: string;
             /** Format: uri */
             url: string;
+            /** @description The source article's advertised image URL; empty when unavailable. */
+            imageUrl: string;
             /** Format: date-time */
             publishedAt: string;
             /** @description Empty for a headline-only article. */
