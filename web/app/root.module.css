@@ -1,0 +1,55 @@
+.skip {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 2;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-inverse-surface);
+  color: var(--md-sys-color-inverse-on-surface);
+  text-decoration: none;
+  transform: translateY(-200%);
+}
+
+.skip:focus-visible {
+  transform: none;
+}
+
+/* Reserved height so the page doesn't shift when the indicator appears. */
+.progress {
+  position: sticky;
+  top: 64px;
+  z-index: 1;
+  height: 4px;
+  margin-bottom: -4px;
+}
+
+.main {
+  flex: 1;
+  width: 100%;
+  max-width: var(--layout-content-max);
+  margin: 0 auto;
+  padding: var(--space-6) var(--layout-margin) var(--space-12);
+}
+
+.footer {
+  padding: var(--space-6) var(--layout-margin);
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  text-align: center;
+}
+
+.error {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: var(--layout-reading-max);
+  padding-top: var(--space-8);
+}
+
+.stack {
+  padding: var(--space-4);
+  overflow-x: auto;
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container);
+}

@@ -1,0 +1,146 @@
+-- Queries used by the ingestion pipeline (internal/jobs, internal/link).
+
+-- name: ExistingArticleURLs :many
+SELECT url FROM articles WHERE url = ANY(sqlc.arg(urls)::text[]);
+
+-- name: InsertFetchedArticle :one
+-- Returns no row when the URL is already stored, which makes a retried fetch a no-op.
+INSERT INTO articles (outlet_id, url, headline, body, published_at, content_hash, minhash)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (url) DO NOTHING
+RETURNING id;
+
+-- name: GetArticleForDedupe :one
+SELECT id, outlet_id, minhash, published_at, reprint_of_id
+FROM articles
+WHERE id = $1;
+
+-- name: ListRecentSignatures :many
+-- Wire stories are reprinted within hours, so only recent originals are compared.
+SELECT id, minhash, event_id
+FROM articles
+WHERE first_seen_at >= sqlc.arg(since)
+  AND id <> sqlc.arg(exclude_id)
+  AND reprint_of_id IS NULL
+  AND cardinality(minhash) > 0
+ORDER BY published_at, id;
+
+-- name: SetArticleReprint :exec
+UPDATE articles
+SET reprint_of_id = $2, event_id = $3
+WHERE id = $1;
+
+-- name: GetArticleForAnalysis :one
+SELECT a.id, a.headline, a.body, a.published_at, a.reprint_of_id, o.name AS outlet_name
+FROM articles a
+JOIN outlets o ON o.id = a.outlet_id
+WHERE a.id = $1;
+
+-- name: GetSummaryVersion :one
+SELECT model, prompt_version FROM summaries WHERE article_id = $1;
+
+-- name: SetArticleAnalysis :exec
+UPDATE articles
+SET development = $2, happened_on = $3, date_is_approximate = $4
+WHERE id = $1;
+
+-- name: GetArticleForLink :one
+SELECT
+    a.id, a.headline, a.development, a.published_at, a.event_id, a.reprint_of_id,
+    COALESCE(s.text, '')::text AS summary,
+    COALESCE(s.recaps, '{}')::text[] AS recaps
+FROM articles a
+LEFT JOIN summaries s ON s.article_id = a.id
+WHERE a.id = $1;
+
+-- name: SetArticleLink :exec
+UPDATE articles
+SET event_id = $2, step_article_id = $3, link_confidence = $4
+WHERE id = $1;
+
+-- name: SetReprintsEvent :exec
+-- Reprints always live in their original's event.
+UPDATE articles
+SET event_id = $2
+WHERE reprint_of_id = $1;
+
+-- name: ListEventSteps :many
+-- The timeline steps of the given events, oldest first.
+SELECT a.event_id, a.id, a.development, a.happened_on, a.published_at
+FROM articles a
+WHERE a.event_id = ANY(sqlc.arg(event_ids)::bigint[])
+  AND a.step_article_id = a.id
+  AND a.development <> ''
+ORDER BY a.event_id, COALESCE(a.happened_on, a.published_at::date), a.published_at;
+
+-- name: GetEventTitles :many
+SELECT id, title FROM events WHERE id = ANY(sqlc.arg(event_ids)::bigint[]);
+
+-- name: TouchEvent :exec
+-- Moves the event to the top of the homepage and refreshes its search text.
+UPDATE events
+SET updated_at = GREATEST(updated_at, sqlc.arg(updated_at)), timeline_text = sqlc.arg(timeline_text)
+WHERE id = sqlc.arg(id);
+
+-- name: FindEntity :one
+-- An exact match on the canonical name or any alias, within one kind.
+SELECT id, canonical_name, aliases
+FROM entities
+WHERE kind = sqlc.arg(kind)
+  AND (canonical_name = sqlc.arg(name) OR sqlc.arg(name)::text = ANY(aliases))
+ORDER BY id
+LIMIT 1;
+
+-- name: CreateEntity :one
+INSERT INTO entities (canonical_name, kind, aliases, search_text)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (canonical_name) DO UPDATE SET canonical_name = EXCLUDED.canonical_name
+RETURNING id;
+
+-- name: SetEntityAliases :exec
+UPDATE entities SET aliases = $2, search_text = $3 WHERE id = $1;
+
+-- name: LinkArticleEntity :exec
+INSERT INTO article_entities (article_id, entity_id) VALUES ($1, $2) ON CONFLICT DO NOTHING;
+
+-- name: LinkEventEntity :exec
+INSERT INTO event_entities (event_id, entity_id) VALUES ($1, $2) ON CONFLICT DO NOTHING;
+
+-- name: ListArticleEntities :many
+SELECT e.id, e.canonical_name
+FROM article_entities ae
+JOIN entities e ON e.id = ae.entity_id
+WHERE ae.article_id = $1
+ORDER BY e.id;
+
+-- name: InsertHeadlineArticle :one
+-- A headline-only article: feed metadata and nothing else. The body stays
+-- empty because the page is never fetched.
+INSERT INTO articles (outlet_id, url, headline, body, published_at, content_hash, minhash)
+VALUES ($1, $2, $3, '', $4, $5, '{}')
+ON CONFLICT (url) DO NOTHING
+RETURNING id;
+
+-- name: GetHeadlineArticle :one
+SELECT id, headline, published_at, first_seen_at, event_id FROM articles WHERE id = $1;
+
+-- name: ListEntityNames :many
+-- Every name an entity is known by, for matching headlines without a model.
+SELECT id, kind, canonical_name, aliases FROM entities;
+
+-- name: ListRecentEventsSharingEntities :many
+-- Like ListEventsSharingEntities, but only events still in the news. A
+-- headline match has no model to judge it, so it is kept to current events.
+SELECT ee.event_id AS id, count(*)::bigint AS shared
+FROM event_entities ee
+JOIN events e ON e.id = ee.event_id
+WHERE ee.entity_id = ANY(sqlc.arg(entity_ids)::bigint[])
+  AND e.updated_at >= sqlc.arg(updated_since)
+GROUP BY ee.event_id
+ORDER BY shared DESC, ee.event_id DESC
+LIMIT sqlc.arg(max_results);
+
+-- name: AttachHeadlineArticle :exec
+-- Attaches without touching the timeline or the event's updated time: a
+-- headline tells us an outlet covered the event, not what it reported.
+UPDATE articles SET event_id = $2, link_confidence = $3 WHERE id = $1;

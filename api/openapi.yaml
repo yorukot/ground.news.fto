@@ -1,0 +1,184 @@
+openapi: 3.1.0
+info:
+  title: Ground News for Taiwan API
+  version: 0.1.0
+  description: >
+    Read-only public API. Article text is never served: only the original
+    headline, a short summary in our own words and a link to the original.
+servers:
+  - url: http://127.0.0.1:8080
+paths:
+  /api/v1/events:
+    get:
+      operationId: listEvents
+      summary: Events, most recently updated first
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string }
+          description: Opaque cursor from a previous page's nextCursor.
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: One page of events
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EventsPage" }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/v1/events/{id}:
+    get:
+      operationId: getEvent
+      summary: One event with its timeline and coverage
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: The event
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EventDetail" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/outlets:
+    get:
+      operationId: listOutlets
+      summary: The outlets the site covers
+      responses:
+        "200":
+          description: Outlets ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [outlets]
+                properties:
+                  outlets:
+                    type: array
+                    items: { $ref: "#/components/schemas/Outlet" }
+components:
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+    Outlet:
+      type: object
+      required: [id, slug, name]
+      properties:
+        id: { type: integer, format: int64 }
+        slug: { type: string }
+        name: { type: string }
+        domain: { type: string }
+    EventSummary:
+      type: object
+      required: [id, title, firstSeenAt, updatedAt, articleCount, outletCount, latestDevelopment]
+      properties:
+        id: { type: integer, format: int64 }
+        title: { type: string }
+        firstSeenAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        articleCount: { type: integer }
+        outletCount: { type: integer }
+        latestDevelopment:
+          type: string
+          description: The most recent timeline step; empty when the event has none.
+    EventsPage:
+      type: object
+      required: [events, nextCursor]
+      properties:
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/EventSummary" }
+        nextCursor:
+          type: [string, "null"]
+    EventDetail:
+      type: object
+      required: [id, title, firstSeenAt, updatedAt, articleCount, outletCount, timeline, articles]
+      properties:
+        id: { type: integer, format: int64 }
+        title: { type: string }
+        firstSeenAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        articleCount: { type: integer }
+        outletCount: { type: integer }
+        timeline:
+          type: array
+          description: Developments in the event, oldest first.
+          items: { $ref: "#/components/schemas/TimelineStep" }
+        articles:
+          type: array
+          description: Coverage, newest first. Wire reprints are folded under their original.
+          items: { $ref: "#/components/schemas/Article" }
+    TimelineStep:
+      type: object
+      required: [articleId, development, happenedOn, dateIsApproximate, reports]
+      properties:
+        articleId:
+          type: integer
+          format: int64
+          description: The first article that reported the development.
+        development: { type: string }
+        happenedOn:
+          type: string
+          format: date
+          description: Calendar date in Asia/Taipei.
+        dateIsApproximate: { type: boolean }
+        reports:
+          type: array
+          description: Outlets that reported the development, ordered by publish time.
+          items: { $ref: "#/components/schemas/StepReport" }
+    StepReport:
+      type: object
+      required: [articleId, outlet, publishedAt]
+      properties:
+        articleId:
+          type: integer
+          format: int64
+          description: The article card to link to; for a wire reprint, the original.
+        outlet: { $ref: "#/components/schemas/Outlet" }
+        publishedAt: { type: string, format: date-time }
+    Article:
+      type: object
+      required: [id, outlet, headline, url, publishedAt, summary, headlineOnly, reprints]
+      properties:
+        id: { type: integer, format: int64 }
+        outlet: { $ref: "#/components/schemas/Outlet" }
+        headline:
+          type: string
+          description: The original headline, unchanged.
+        url: { type: string, format: uri }
+        publishedAt: { type: string, format: date-time }
+        summary:
+          type: string
+          description: Empty for a headline-only article.
+        headlineOnly:
+          type: boolean
+          description: >
+            True for outlets that don't allow AI use of their content. Only the
+            headline and link are shown; the article is never summarized.
+        reprints:
+          type: array
+          items: { $ref: "#/components/schemas/Reprint" }
+    Reprint:
+      type: object
+      required: [outlet, url, publishedAt]
+      properties:
+        outlet: { $ref: "#/components/schemas/Outlet" }
+        url: { type: string, format: uri }
+        publishedAt: { type: string, format: date-time }

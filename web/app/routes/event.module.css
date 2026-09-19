@@ -1,0 +1,80 @@
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-8);
+}
+
+.title {
+  max-width: var(--layout-reading-max);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.panes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.sectionHeading {
+  margin-bottom: var(--space-4);
+}
+
+.coverageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.count {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.articles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--layout-gap);
+}
+
+@media (max-width: 599.98px) {
+  .title {
+    font-size: var(--md-sys-typescale-headline-small-size);
+    line-height: var(--md-sys-typescale-headline-small-line-height);
+  }
+}
+
+/* Expanded and up: M3 supporting-pane layout. Coverage is the primary pane;
+   the timeline is a sticky supporting pane. Source order keeps the timeline first. */
+@media (min-width: 840px) {
+  .panes {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: var(--space-6);
+    align-items: start;
+  }
+
+  .timeline {
+    grid-column: 2;
+    grid-row: 1;
+    position: sticky;
+    top: calc(64px + var(--space-4));
+    max-height: calc(100dvh - 64px - var(--space-8));
+    padding: var(--space-4);
+    overflow-y: auto;
+    border-radius: var(--md-sys-shape-corner-large);
+    background: var(--md-sys-color-surface-container-low);
+  }
+
+  .coverage {
+    grid-column: 1;
+    grid-row: 1;
+  }
+}

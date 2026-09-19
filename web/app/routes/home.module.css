@@ -1,0 +1,31 @@
+.heading {
+  margin-bottom: var(--space-4);
+}
+
+.empty {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+/* One column through the medium window class, capped for readability;
+   two columns from expanded (840px) up. */
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 720px);
+  gap: var(--layout-gap);
+}
+
+.grid > li {
+  display: grid;
+}
+
+@media (min-width: 840px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.more {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-8);
+}

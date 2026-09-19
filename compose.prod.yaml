@@ -1,0 +1,82 @@
+# Production: Caddy (TLS) → web (Node, server rendering) → api (Go), plus the
+# worker and Postgres. Only Caddy is reachable from outside.
+#
+#   SITE_ADDRESS=news.example.org docker compose -f compose.prod.yaml up -d --build
+#
+# Secrets come from the environment or an env file; see .env.example.
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+  web:
+    build: ./web
+    restart: unless-stopped
+    environment:
+      API_URL: http://api:8080
+    depends_on:
+      - api
+
+  api:
+    build: .
+    restart: unless-stopped
+    command: ["serve"]
+    environment: &backend-env
+      DATABASE_URL: postgres://ground:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/ground?sslmode=disable
+      HTTP_ADDR: 0.0.0.0:8080
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_SUMMARY_MODEL: ${OPENAI_SUMMARY_MODEL:-}
+      CRAWLER_USER_AGENT: ${CRAWLER_USER_AGENT:-GroundNewsTW-bot/0.1}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["worker"]
+    environment: *backend-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  migrate:
+    build: .
+    command: ["migrate"]
+    environment: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ground
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ground
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ground -d ground"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

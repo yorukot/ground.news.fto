@@ -1,0 +1,96 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: 40px;
+  padding: 0 var(--space-6);
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+    box-shadow var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+}
+
+/* 48px touch target around the 40px container. */
+.button::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+}
+
+.withIcon {
+  padding-left: var(--space-4);
+}
+
+.withTrailingIcon {
+  padding-right: var(--space-4);
+}
+
+.filled {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+
+@media (hover: hover) {
+  .filled:hover,
+  .tonal:hover {
+    box-shadow: var(--md-sys-elevation-level1);
+  }
+}
+
+.tonal {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.outlined {
+  border: 1px solid var(--md-sys-color-outline);
+}
+
+.text {
+  padding: 0 var(--space-3);
+}
+
+.text.withIcon {
+  padding-right: var(--space-4);
+}
+
+.text.withTrailingIcon {
+  padding-left: var(--space-4);
+  padding-right: var(--space-3);
+}
+
+.button[data-disabled] {
+  background: transparent;
+  color: color-mix(
+    in srgb,
+    var(--md-sys-color-on-surface) calc(var(--md-sys-state-disabled-content-opacity) * 100%),
+    transparent
+  );
+  box-shadow: none;
+  cursor: default;
+}
+
+.filled[data-disabled],
+.tonal[data-disabled] {
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-on-surface) calc(var(--md-sys-state-disabled-container-opacity) * 100%),
+    transparent
+  );
+}
+
+.outlined[data-disabled] {
+  border-color: color-mix(
+    in srgb,
+    var(--md-sys-color-on-surface) calc(var(--md-sys-state-disabled-container-opacity) * 100%),
+    transparent
+  );
+}

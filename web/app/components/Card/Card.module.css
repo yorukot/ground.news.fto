@@ -1,0 +1,15 @@
+.card {
+  display: block;
+  padding: var(--space-4);
+  border-radius: var(--md-sys-shape-corner-medium);
+  color: var(--md-sys-color-on-surface);
+}
+
+.outlined {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface);
+}
+
+.filled {
+  background: var(--md-sys-color-surface-container-low);
+}

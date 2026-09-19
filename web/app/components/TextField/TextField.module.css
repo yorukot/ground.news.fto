@@ -1,0 +1,88 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.container {
+  position: relative;
+}
+
+.input {
+  width: 100%;
+  height: 56px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  caret-color: var(--md-sys-color-primary);
+  outline: none;
+}
+
+@media (hover: hover) {
+  .input:hover {
+    border-color: var(--md-sys-color-on-surface);
+  }
+}
+
+/* The focused outline is 2px; a box-shadow adds the second pixel without
+   shifting the layout. */
+.input:focus {
+  border-color: var(--md-sys-color-primary);
+  box-shadow: inset 0 0 0 1px var(--md-sys-color-primary);
+}
+
+.input[data-invalid] {
+  border-color: var(--md-sys-color-error);
+  caret-color: var(--md-sys-color-error);
+}
+
+.input[data-invalid]:focus {
+  box-shadow: inset 0 0 0 1px var(--md-sys-color-error);
+}
+
+/* The label rests inside the field and floats onto the outline when the
+   field is focused or filled. */
+.label {
+  position: absolute;
+  top: 50%;
+  left: var(--space-3);
+  padding: 0 var(--space-1);
+  /* The label cuts a notch in the outline, so it needs the color behind the
+     field. A container on another surface sets --text-field-surface. */
+  background: var(--text-field-surface, var(--md-sys-color-surface));
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: var(--md-sys-typescale-body-large-size);
+  line-height: var(--md-sys-typescale-body-large-line-height);
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition:
+    top var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+    font-size var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+}
+
+.input:focus + .label,
+.input:not(:placeholder-shown) + .label {
+  top: 0;
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line-height);
+}
+
+.input:focus + .label {
+  color: var(--md-sys-color-primary);
+}
+
+.input[data-invalid] + .label {
+  color: var(--md-sys-color-error);
+}
+
+.supporting,
+.error {
+  padding: 0 var(--space-4);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.error {
+  color: var(--md-sys-color-error);
+}

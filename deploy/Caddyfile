@@ -1,0 +1,18 @@
+# Caddy obtains and renews the certificate for SITE_ADDRESS by itself.
+# Everything goes to the web app; the Go API is internal and never exposed.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Built assets are content-hashed, so they can be cached for good.
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	reverse_proxy web:3000
+}

@@ -1,0 +1,95 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  /* Leave room for the sticky app bar when a timeline chip jumps here. */
+  scroll-margin-top: calc(64px + var(--space-4));
+}
+
+.card:target {
+  border-color: var(--md-sys-color-primary);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.summary {
+  max-width: var(--layout-reading-max);
+}
+
+.note {
+  max-width: var(--layout-reading-max);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: var(--space-2) calc(var(--space-2) * -1) calc(var(--space-2) * -1);
+}
+
+.reprints {
+  margin-left: calc(var(--space-3) * -1);
+}
+
+.reprintsTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 32px;
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+}
+
+.reprintsTrigger::after {
+  content: "";
+  position: absolute;
+  inset: -8px 0;
+}
+
+.reprintsIcon {
+  transition: transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+}
+
+.reprintsTrigger[data-panel-open] .reprintsIcon {
+  transform: rotate(180deg);
+}
+
+.reprintsPanel {
+  height: var(--collapsible-panel-height);
+  overflow: hidden;
+  transition: height var(--md-sys-motion-duration-short4)
+    var(--md-sys-motion-easing-standard-decelerate);
+}
+
+.reprintsPanel[data-starting-style],
+.reprintsPanel[data-ending-style] {
+  height: 0;
+}
+
+.reprintsList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3) var(--space-2);
+}
+
+.reprintsList li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.reprintTime {
+  color: var(--md-sys-color-on-surface-variant);
+}

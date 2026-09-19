@@ -1,0 +1,28 @@
+.card {
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.link {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  height: 100%;
+  padding: var(--space-4);
+  border-radius: inherit;
+  color: var(--md-sys-color-on-surface);
+  text-decoration: none;
+}
+
+.latest {
+  color: var(--md-sys-color-on-surface);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin-top: auto;
+  padding-top: var(--space-2);
+  color: var(--md-sys-color-on-surface-variant);
+}

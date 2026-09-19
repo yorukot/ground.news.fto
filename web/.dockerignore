@@ -1,0 +1,6 @@
+node_modules
+build
+.react-router
+test-results
+playwright-report
+e2e
