@@ -22,7 +22,7 @@ func mustLoadLocation(name string) *time.Location {
 
 // buildEventBody turns an event's article rows into the coverage list (wire
 // reprints folded under their original) and the timeline (oldest step first).
-func buildEventBody(rows []db.ListEventArticlesRow) ([]Article, []TimelineStep) {
+func buildEventBody(rows []db.ListEventArticlesRow, l lang) ([]Article, []TimelineStep) {
 	inEvent := make(map[int64]bool, len(rows))
 	for _, r := range rows {
 		inEvent[r.ID] = true
@@ -65,7 +65,7 @@ func buildEventBody(rows []db.ListEventArticlesRow) ([]Article, []TimelineStep) 
 			URL:          r.Url,
 			ImageURL:     r.ImageUrl,
 			PublishedAt:  r.PublishedAt,
-			Summary:      r.Summary,
+			Summary:      l.text(r.Summary, r.SummaryZh),
 			HeadlineOnly: r.HeadlineOnly,
 			Reprints:     rp,
 		})
@@ -86,7 +86,7 @@ func buildEventBody(rows []db.ListEventArticlesRow) ([]Article, []TimelineStep) 
 		}
 		step := &TimelineStep{
 			ArticleID:         r.ID,
-			Development:       r.Development,
+			Development:       l.text(r.Development, r.DevelopmentZh),
 			DateIsApproximate: r.DateIsApproximate,
 			Reports:           []StepReport{},
 		}

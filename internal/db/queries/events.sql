@@ -4,6 +4,7 @@
 SELECT
     e.id,
     e.title,
+    e.title_zh,
     e.first_seen_at,
     e.updated_at,
     (SELECT count(*) FROM articles a WHERE a.event_id = e.id)::bigint AS article_count,
@@ -21,7 +22,14 @@ SELECT
         WHERE a.event_id = e.id AND a.image_url <> ''
         ORDER BY a.published_at DESC, a.id DESC
         LIMIT 1
-    ), '')::text AS image_url
+    ), '')::text AS image_url,
+    COALESCE((
+        SELECT a.development_zh
+        FROM articles a
+        WHERE a.event_id = e.id AND a.step_article_id = a.id
+        ORDER BY COALESCE(a.happened_on, a.published_at::date) DESC, a.published_at DESC
+        LIMIT 1
+    ), '')::text AS latest_development_zh
 FROM events e
 WHERE (e.updated_at, e.id) < (sqlc.arg(cursor_updated_at)::timestamptz, sqlc.arg(cursor_id)::bigint)
   AND EXISTS (SELECT 1 FROM articles a WHERE a.event_id = e.id)
@@ -33,6 +41,8 @@ SELECT
     e.id,
     e.title,
     e.summary,
+    e.summary_zh,
+    e.title_zh,
     e.first_seen_at,
     e.updated_at,
     (SELECT count(*) FROM articles a WHERE a.event_id = e.id)::bigint AS article_count,

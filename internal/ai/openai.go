@@ -24,6 +24,8 @@ var (
 	linkPrompt string
 	//go:embed prompts/title.md
 	titlePrompt string
+	//go:embed prompts/translate.md
+	translatePrompt string
 )
 
 // maxBodyRunes bounds what is sent to the model. News articles are far
@@ -64,6 +66,8 @@ func (o *OpenAI) SummarizeArticle(ctx context.Context, in ArticleInput) (Article
 	}
 	out.Summary = strings.TrimSpace(out.Summary)
 	out.Development = strings.TrimSpace(out.Development)
+	out.SummaryZh = strings.TrimSpace(out.SummaryZh)
+	out.DevelopmentZh = strings.TrimSpace(out.DevelopmentZh)
 	if out.Summary == "" {
 		return ArticleAnalysis{}, errors.New("model returned an empty summary")
 	}
@@ -155,6 +159,36 @@ func (o *OpenAI) TitleEvent(ctx context.Context, in TitleInput) (string, error) 
 	return title, nil
 }
 
+func (o *OpenAI) Translate(ctx context.Context, in TranslateInput) (Translation, error) {
+	payload, err := json.MarshalIndent(map[string]any{
+		"title":       in.Title,
+		"summary":     in.Summary,
+		"development": in.Development,
+		"names":       in.Names,
+	}, "", "  ")
+	if err != nil {
+		return Translation{}, err
+	}
+	var out Translation
+	if err := o.structured(ctx, translatePrompt, string(payload), "translation", translationSchema, &out); err != nil {
+		return Translation{}, err
+	}
+	out.Title = strings.Trim(strings.TrimSpace(out.Title), `"“”。`)
+	out.Summary = strings.TrimSpace(out.Summary)
+	out.Development = strings.TrimRight(strings.TrimSpace(out.Development), "。. ")
+	// Never return text for a field that was not asked for.
+	if in.Title == "" {
+		out.Title = ""
+	}
+	if in.Summary == "" {
+		out.Summary = ""
+	}
+	if in.Development == "" {
+		out.Development = ""
+	}
+	return out, nil
+}
+
 // structured runs one chat completion constrained to a strict JSON schema.
 func (o *OpenAI) structured(ctx context.Context, system, user, name string, schema map[string]any, out any) error {
 	resp, err := o.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
@@ -231,10 +265,12 @@ func linkPayload(in LinkInput) map[string]any {
 var analysisSchema = map[string]any{
 	"type":                 "object",
 	"additionalProperties": false,
-	"required":             []string{"summary", "development", "happened_on", "date_is_approximate", "entities", "recaps"},
+	"required":             []string{"summary", "summary_zh", "development", "development_zh", "happened_on", "date_is_approximate", "entities", "recaps"},
 	"properties": map[string]any{
 		"summary":             map[string]any{"type": "string"},
+		"summary_zh":          map[string]any{"type": "string"},
 		"development":         map[string]any{"type": "string"},
+		"development_zh":      map[string]any{"type": "string"},
 		"happened_on":         map[string]any{"type": "string", "description": "YYYY-MM-DD, or an empty string when unclear"},
 		"date_is_approximate": map[string]any{"type": "boolean"},
 		"entities": map[string]any{
@@ -263,5 +299,16 @@ var linkSchema = map[string]any{
 		"step_article_id": map[string]any{"type": "integer"},
 		"confidence":      map[string]any{"type": "number"},
 		"reason":          map[string]any{"type": "string"},
+	},
+}
+
+var translationSchema = map[string]any{
+	"type":                 "object",
+	"additionalProperties": false,
+	"required":             []string{"title", "summary", "development"},
+	"properties": map[string]any{
+		"title":       map[string]any{"type": "string"},
+		"summary":     map[string]any{"type": "string"},
+		"development": map[string]any{"type": "string"},
 	},
 }

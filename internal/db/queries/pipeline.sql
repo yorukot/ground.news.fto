@@ -45,7 +45,7 @@ SELECT model, prompt_version FROM summaries WHERE article_id = $1;
 
 -- name: SetArticleAnalysis :exec
 UPDATE articles
-SET development = $2, happened_on = $3, date_is_approximate = $4
+SET development = $2, development_zh = $3, happened_on = $4, date_is_approximate = $5
 WHERE id = $1;
 
 -- name: GetArticleForLink :one
@@ -108,6 +108,7 @@ ORDER BY a.published_at ASC, a.id ASC;
 -- Do not let a slower job overwrite an overview made from newer coverage.
 UPDATE events
 SET summary = sqlc.arg(summary),
+    summary_zh = '',
     summary_model = sqlc.arg(model),
     summary_prompt_version = sqlc.arg(prompt_version)
 WHERE id = sqlc.arg(id) AND updated_at = sqlc.arg(expected_updated_at);
@@ -179,3 +180,60 @@ LIMIT sqlc.arg(max_results);
 
 -- name: SetArticleImage :exec
 UPDATE articles SET image_url = $2 WHERE id = $1 AND image_url = '';
+
+-- name: SetEventZh :exec
+-- Empty inputs preserve existing translations so title and summary can be
+-- backfilled independently.
+UPDATE events SET
+    title_zh = COALESCE(NULLIF(sqlc.arg(title_zh)::text, ''), title_zh),
+    summary_zh = COALESCE(NULLIF(sqlc.arg(summary_zh)::text, ''), summary_zh)
+WHERE id = sqlc.arg(id);
+
+-- name: SetArticleZh :exec
+-- Fills the Traditional Chinese text of an analyzed article. An empty value
+-- keeps what is already stored, so a partial translation never erases text.
+UPDATE articles SET development_zh = COALESCE(NULLIF(sqlc.arg(development_zh)::text, ''), development_zh)
+WHERE id = sqlc.arg(id);
+
+-- name: SetSummaryZh :exec
+UPDATE summaries SET text_zh = sqlc.arg(text_zh) WHERE article_id = sqlc.arg(article_id);
+
+-- name: ListEventsMissingZh :many
+-- Events still without a Chinese title, with the original-script entity names
+-- the translation must reuse. Only events that are shown (have articles).
+SELECT
+    e.id,
+    e.title,
+    e.title_zh,
+    e.summary,
+    e.summary_zh,
+    COALESCE((
+        SELECT array_agg(en.canonical_name ORDER BY en.id)
+        FROM event_entities ee JOIN entities en ON en.id = ee.entity_id
+        WHERE ee.event_id = e.id
+    ), '{}')::text[] AS names
+FROM events e
+WHERE (e.title_zh = '' OR (e.summary <> '' AND e.summary_zh = ''))
+  AND EXISTS (SELECT 1 FROM articles a WHERE a.event_id = e.id)
+ORDER BY e.updated_at DESC
+LIMIT sqlc.arg(max_results);
+
+-- name: ListArticlesMissingZh :many
+-- Analyzed articles whose summary or timeline line has no Chinese version yet.
+SELECT
+    a.id,
+    a.development,
+    a.development_zh,
+    s.text AS summary,
+    s.text_zh AS summary_zh,
+    COALESCE((
+        SELECT array_agg(en.canonical_name ORDER BY en.id)
+        FROM article_entities ae JOIN entities en ON en.id = ae.entity_id
+        WHERE ae.article_id = a.id
+    ), '{}')::text[] AS names
+FROM articles a
+JOIN summaries s ON s.article_id = a.id
+WHERE (s.text_zh = '' AND s.text <> '')
+   OR (a.development_zh = '' AND a.development <> '')
+ORDER BY a.published_at DESC
+LIMIT sqlc.arg(max_results);

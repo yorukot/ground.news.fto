@@ -9,6 +9,7 @@ package link
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -113,6 +114,21 @@ func (l *Linker) Link(ctx context.Context, articleID int64) (Result, error) {
 		}
 	}
 
+	// A missing Chinese title is not an error: the translate job fills it in
+	// later and the API serves English meanwhile.
+	var newTitleZh string
+	if newTitle != "" {
+		names := make([]string, 0, len(entities))
+		for _, e := range entities {
+			names = append(names, e.CanonicalName)
+		}
+		if tr, err := l.AI.Translate(ctx, ai.TranslateInput{Title: newTitle, Names: names}); err != nil {
+			slog.Warn("translate event title", "title", newTitle, "err", err)
+		} else {
+			newTitleZh = tr.Title
+		}
+	}
+
 	res := Result{EventID: decision.EventID, NewEvent: decision.EventID == 0, Confidence: decision.Confidence}
 	err = pgx.BeginFunc(ctx, l.Pool, func(tx pgx.Tx) error {
 		q := db.New(tx)
@@ -126,6 +142,11 @@ func (l *Linker) Link(ctx context.Context, articleID int64) (Result, error) {
 				return fmt.Errorf("create event: %w", err)
 			}
 			res.EventID = id
+			if newTitleZh != "" {
+				if err := q.SetEventZh(ctx, db.SetEventZhParams{ID: id, TitleZh: newTitleZh}); err != nil {
+					return fmt.Errorf("set event title: %w", err)
+				}
+			}
 		}
 
 		var step pgtype.Int8

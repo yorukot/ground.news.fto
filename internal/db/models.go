@@ -41,6 +41,7 @@ type Article struct {
 	LinkConfidence    pgtype.Float4
 	ManualLink        bool
 	ImageUrl          string
+	DevelopmentZh     string
 }
 
 type ArticleEntity struct {
@@ -98,6 +99,8 @@ type Event struct {
 	Summary              string
 	SummaryModel         string
 	SummaryPromptVersion string
+	TitleZh              string
+	SummaryZh            string
 }
 
 type EventEntity struct {
@@ -123,4 +126,5 @@ type Summary struct {
 	Model         string
 	PromptVersion string
 	CreatedAt     time.Time
+	TextZh        string
 }

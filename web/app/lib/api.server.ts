@@ -1,5 +1,6 @@
 // Server-only client for the Go API. Loaders call these; the browser never
 // talks to the API directly.
+import { DEFAULT_LOCALE, type Locale } from "~/i18n/locales";
 import type { components } from "./api-types";
 
 export type EventSummary = components["schemas"]["EventSummary"];
@@ -29,14 +30,25 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await res.json()) as T;
 }
 
-export function listEvents(cursor: string | null, signal?: AbortSignal): Promise<EventsPage> {
-  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
-  return get<EventsPage>(`/api/v1/events${query}`, signal);
+// The site's own text (titles, summaries, timeline lines) comes back in the
+// reader's language; headlines and outlet names are always the originals.
+export function listEvents(
+  cursor: string | null,
+  signal?: AbortSignal,
+  locale: Locale = DEFAULT_LOCALE,
+): Promise<EventsPage> {
+  const query = new URLSearchParams({ lang: locale });
+  if (cursor) query.set("cursor", cursor);
+  return get<EventsPage>(`/api/v1/events?${query}`, signal);
 }
 
-export function getEvent(id: string, signal?: AbortSignal): Promise<EventDetail> {
+export function getEvent(
+  id: string,
+  signal?: AbortSignal,
+  locale: Locale = DEFAULT_LOCALE,
+): Promise<EventDetail> {
   if (!/^\d+$/.test(id)) throw new Response("Not found", { status: 404 });
-  return get<EventDetail>(`/api/v1/events/${id}`, signal);
+  return get<EventDetail>(`/api/v1/events/${id}?${new URLSearchParams({ lang: locale })}`, signal);
 }
 
 export async function listOutlets(signal?: AbortSignal): Promise<Outlet[]> {

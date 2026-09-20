@@ -34,6 +34,8 @@ SELECT
     e.id,
     e.title,
     e.summary,
+    e.summary_zh,
+    e.title_zh,
     e.first_seen_at,
     e.updated_at,
     (SELECT count(*) FROM articles a WHERE a.event_id = e.id)::bigint AS article_count,
@@ -46,6 +48,8 @@ type GetEventRow struct {
 	ID           int64
 	Title        string
 	Summary      string
+	SummaryZh    string
+	TitleZh      string
 	FirstSeenAt  time.Time
 	UpdatedAt    time.Time
 	ArticleCount int64
@@ -59,6 +63,8 @@ func (q *Queries) GetEvent(ctx context.Context, id int64) (GetEventRow, error) {
 		&i.ID,
 		&i.Title,
 		&i.Summary,
+		&i.SummaryZh,
+		&i.TitleZh,
 		&i.FirstSeenAt,
 		&i.UpdatedAt,
 		&i.ArticleCount,
@@ -71,6 +77,7 @@ const listEvents = `-- name: ListEvents :many
 SELECT
     e.id,
     e.title,
+    e.title_zh,
     e.first_seen_at,
     e.updated_at,
     (SELECT count(*) FROM articles a WHERE a.event_id = e.id)::bigint AS article_count,
@@ -88,7 +95,14 @@ SELECT
         WHERE a.event_id = e.id AND a.image_url <> ''
         ORDER BY a.published_at DESC, a.id DESC
         LIMIT 1
-    ), '')::text AS image_url
+    ), '')::text AS image_url,
+    COALESCE((
+        SELECT a.development_zh
+        FROM articles a
+        WHERE a.event_id = e.id AND a.step_article_id = a.id
+        ORDER BY COALESCE(a.happened_on, a.published_at::date) DESC, a.published_at DESC
+        LIMIT 1
+    ), '')::text AS latest_development_zh
 FROM events e
 WHERE (e.updated_at, e.id) < ($1::timestamptz, $2::bigint)
   AND EXISTS (SELECT 1 FROM articles a WHERE a.event_id = e.id)
@@ -103,14 +117,16 @@ type ListEventsParams struct {
 }
 
 type ListEventsRow struct {
-	ID                int64
-	Title             string
-	FirstSeenAt       time.Time
-	UpdatedAt         time.Time
-	ArticleCount      int64
-	OutletCount       int64
-	LatestDevelopment string
-	ImageUrl          string
+	ID                  int64
+	Title               string
+	TitleZh             string
+	FirstSeenAt         time.Time
+	UpdatedAt           time.Time
+	ArticleCount        int64
+	OutletCount         int64
+	LatestDevelopment   string
+	ImageUrl            string
+	LatestDevelopmentZh string
 }
 
 // Keyset pagination, most recently updated first. For the first page pass a
@@ -127,12 +143,14 @@ func (q *Queries) ListEvents(ctx context.Context, arg ListEventsParams) ([]ListE
 		if err := rows.Scan(
 			&i.ID,
 			&i.Title,
+			&i.TitleZh,
 			&i.FirstSeenAt,
 			&i.UpdatedAt,
 			&i.ArticleCount,
 			&i.OutletCount,
 			&i.LatestDevelopment,
 			&i.ImageUrl,
+			&i.LatestDevelopmentZh,
 		); err != nil {
 			return nil, err
 		}

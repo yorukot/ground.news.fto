@@ -418,6 +418,63 @@ func (q *Queries) ListArticlesMissingImage(ctx context.Context, maxResults int32
 	return items, nil
 }
 
+const listArticlesMissingZh = `-- name: ListArticlesMissingZh :many
+SELECT
+    a.id,
+    a.development,
+    a.development_zh,
+    s.text AS summary,
+    s.text_zh AS summary_zh,
+    COALESCE((
+        SELECT array_agg(en.canonical_name ORDER BY en.id)
+        FROM article_entities ae JOIN entities en ON en.id = ae.entity_id
+        WHERE ae.article_id = a.id
+    ), '{}')::text[] AS names
+FROM articles a
+JOIN summaries s ON s.article_id = a.id
+WHERE (s.text_zh = '' AND s.text <> '')
+   OR (a.development_zh = '' AND a.development <> '')
+ORDER BY a.published_at DESC
+LIMIT $1
+`
+
+type ListArticlesMissingZhRow struct {
+	ID            int64
+	Development   string
+	DevelopmentZh string
+	Summary       string
+	SummaryZh     string
+	Names         []string
+}
+
+// Analyzed articles whose summary or timeline line has no Chinese version yet.
+func (q *Queries) ListArticlesMissingZh(ctx context.Context, maxResults int32) ([]ListArticlesMissingZhRow, error) {
+	rows, err := q.db.Query(ctx, listArticlesMissingZh, maxResults)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListArticlesMissingZhRow{}
+	for rows.Next() {
+		var i ListArticlesMissingZhRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Development,
+			&i.DevelopmentZh,
+			&i.Summary,
+			&i.SummaryZh,
+			&i.Names,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listEventSteps = `-- name: ListEventSteps :many
 SELECT a.event_id, a.id, a.development, a.happened_on, a.published_at
 FROM articles a
@@ -485,6 +542,63 @@ func (q *Queries) ListEventSummarySources(ctx context.Context, eventID int64) ([
 	for rows.Next() {
 		var i ListEventSummarySourcesRow
 		if err := rows.Scan(&i.Development, &i.Summary); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEventsMissingZh = `-- name: ListEventsMissingZh :many
+SELECT
+    e.id,
+    e.title,
+    e.title_zh,
+    e.summary,
+    e.summary_zh,
+    COALESCE((
+        SELECT array_agg(en.canonical_name ORDER BY en.id)
+        FROM event_entities ee JOIN entities en ON en.id = ee.entity_id
+        WHERE ee.event_id = e.id
+    ), '{}')::text[] AS names
+FROM events e
+WHERE (e.title_zh = '' OR (e.summary <> '' AND e.summary_zh = ''))
+  AND EXISTS (SELECT 1 FROM articles a WHERE a.event_id = e.id)
+ORDER BY e.updated_at DESC
+LIMIT $1
+`
+
+type ListEventsMissingZhRow struct {
+	ID        int64
+	Title     string
+	TitleZh   string
+	Summary   string
+	SummaryZh string
+	Names     []string
+}
+
+// Events still without a Chinese title, with the original-script entity names
+// the translation must reuse. Only events that are shown (have articles).
+func (q *Queries) ListEventsMissingZh(ctx context.Context, maxResults int32) ([]ListEventsMissingZhRow, error) {
+	rows, err := q.db.Query(ctx, listEventsMissingZh, maxResults)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEventsMissingZhRow{}
+	for rows.Next() {
+		var i ListEventsMissingZhRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.TitleZh,
+			&i.Summary,
+			&i.SummaryZh,
+			&i.Names,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -579,13 +693,14 @@ func (q *Queries) ListRecentSignatures(ctx context.Context, arg ListRecentSignat
 
 const setArticleAnalysis = `-- name: SetArticleAnalysis :exec
 UPDATE articles
-SET development = $2, happened_on = $3, date_is_approximate = $4
+SET development = $2, development_zh = $3, happened_on = $4, date_is_approximate = $5
 WHERE id = $1
 `
 
 type SetArticleAnalysisParams struct {
 	ID                int64
 	Development       string
+	DevelopmentZh     string
 	HappenedOn        pgtype.Date
 	DateIsApproximate bool
 }
@@ -594,6 +709,7 @@ func (q *Queries) SetArticleAnalysis(ctx context.Context, arg SetArticleAnalysis
 	_, err := q.db.Exec(ctx, setArticleAnalysis,
 		arg.ID,
 		arg.Development,
+		arg.DevelopmentZh,
 		arg.HappenedOn,
 		arg.DateIsApproximate,
 	)
@@ -654,6 +770,23 @@ func (q *Queries) SetArticleReprint(ctx context.Context, arg SetArticleReprintPa
 	return err
 }
 
+const setArticleZh = `-- name: SetArticleZh :exec
+UPDATE articles SET development_zh = COALESCE(NULLIF($1::text, ''), development_zh)
+WHERE id = $2
+`
+
+type SetArticleZhParams struct {
+	DevelopmentZh string
+	ID            int64
+}
+
+// Fills the Traditional Chinese text of an analyzed article. An empty value
+// keeps what is already stored, so a partial translation never erases text.
+func (q *Queries) SetArticleZh(ctx context.Context, arg SetArticleZhParams) error {
+	_, err := q.db.Exec(ctx, setArticleZh, arg.DevelopmentZh, arg.ID)
+	return err
+}
+
 const setEntityAliases = `-- name: SetEntityAliases :exec
 UPDATE entities SET aliases = $2, search_text = $3 WHERE id = $1
 `
@@ -672,6 +805,7 @@ func (q *Queries) SetEntityAliases(ctx context.Context, arg SetEntityAliasesPara
 const setEventSummary = `-- name: SetEventSummary :execrows
 UPDATE events
 SET summary = $1,
+    summary_zh = '',
     summary_model = $2,
     summary_prompt_version = $3
 WHERE id = $4 AND updated_at = $5
@@ -700,6 +834,26 @@ func (q *Queries) SetEventSummary(ctx context.Context, arg SetEventSummaryParams
 	return result.RowsAffected(), nil
 }
 
+const setEventZh = `-- name: SetEventZh :exec
+UPDATE events SET
+    title_zh = COALESCE(NULLIF($1::text, ''), title_zh),
+    summary_zh = COALESCE(NULLIF($2::text, ''), summary_zh)
+WHERE id = $3
+`
+
+type SetEventZhParams struct {
+	TitleZh   string
+	SummaryZh string
+	ID        int64
+}
+
+// Empty inputs preserve existing translations so title and summary can be
+// backfilled independently.
+func (q *Queries) SetEventZh(ctx context.Context, arg SetEventZhParams) error {
+	_, err := q.db.Exec(ctx, setEventZh, arg.TitleZh, arg.SummaryZh, arg.ID)
+	return err
+}
+
 const setReprintsEvent = `-- name: SetReprintsEvent :exec
 UPDATE articles
 SET event_id = $2
@@ -714,6 +868,20 @@ type SetReprintsEventParams struct {
 // Reprints always live in their original's event.
 func (q *Queries) SetReprintsEvent(ctx context.Context, arg SetReprintsEventParams) error {
 	_, err := q.db.Exec(ctx, setReprintsEvent, arg.ReprintOfID, arg.EventID)
+	return err
+}
+
+const setSummaryZh = `-- name: SetSummaryZh :exec
+UPDATE summaries SET text_zh = $1 WHERE article_id = $2
+`
+
+type SetSummaryZhParams struct {
+	TextZh    string
+	ArticleID int64
+}
+
+func (q *Queries) SetSummaryZh(ctx context.Context, arg SetSummaryZhParams) error {
+	_, err := q.db.Exec(ctx, setSummaryZh, arg.TextZh, arg.ArticleID)
 	return err
 }
 

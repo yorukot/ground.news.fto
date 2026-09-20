@@ -163,6 +163,7 @@ func storeAnalysis(ctx context.Context, q *db.Queries, articleID int64, a ai.Art
 		ID: articleID,
 		// A timeline line is a label, not a sentence.
 		Development:       strings.TrimRight(a.Development, ". "),
+		DevelopmentZh:     strings.TrimRight(a.DevelopmentZh, "。. "),
 		HappenedOn:        happenedOn,
 		DateIsApproximate: a.DateIsApproximate && happenedOn.Valid,
 	})
@@ -176,6 +177,7 @@ func storeAnalysis(ctx context.Context, q *db.Queries, articleID int64, a ai.Art
 	err = q.UpsertSummary(ctx, db.UpsertSummaryParams{
 		ArticleID:     articleID,
 		Text:          a.Summary,
+		TextZh:        a.SummaryZh,
 		Recaps:        recaps,
 		Model:         model,
 		PromptVersion: ai.PromptVersion,
