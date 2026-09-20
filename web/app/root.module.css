@@ -18,7 +18,7 @@
 /* Reserved height so the page doesn't shift when the indicator appears. */
 .progress {
   position: sticky;
-  top: 64px;
+  top: 68px;
   z-index: 1;
   height: 4px;
   margin-bottom: -4px;
@@ -33,9 +33,10 @@
 }
 
 .footer {
-  padding: var(--space-6) var(--layout-margin);
-  border-top: 1px solid var(--md-sys-color-outline-variant);
-  color: var(--md-sys-color-on-surface-variant);
+  padding: var(--space-8) var(--layout-margin);
+  border-top: 2px solid var(--news-accent);
+  background: var(--news-ink);
+  color: color-mix(in srgb, var(--news-on-ink) 68%, transparent);
   text-align: center;
 }
 

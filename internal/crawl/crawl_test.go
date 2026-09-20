@@ -28,6 +28,7 @@ func TestCanonicalURL(t *testing.T) {
 const page = `<!doctype html><html><head>
 <title>範例標題 | 範例新聞網</title>
 <meta property="og:title" content="範例標題">
+<meta property="og:image" content="/images/story.jpg">
 <meta property="article:published_time" content="2026-09-19T08:30:00+08:00">
 <script type="application/ld+json">{"@type":"NewsArticle","datePublished":"2026-09-19T08:30:00+08:00","provider":{"@type":"Organization","name":"中央社"}}</script>
 </head><body>
@@ -61,6 +62,9 @@ func TestExtract(t *testing.T) {
 		}
 		if art.Provider != "中央社" {
 			t.Errorf("provider = %q", art.Provider)
+		}
+		if art.ImageURL != "https://example.com/images/story.jpg" {
+			t.Errorf("image = %q", art.ImageURL)
 		}
 	})
 
@@ -162,8 +166,8 @@ func TestContentSignalDoesNotDisableExtraction(t *testing.T) {
 }
 
 func TestParseSitemap(t *testing.T) {
-	body := `<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">
-<url><loc>https://example.com/n/1</loc><news:news><news:publication_date>2026-09-19T08:00:00+08:00</news:publication_date><news:title>範例標題 &amp; 副題</news:title></news:news></url>
+	body := `<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+<url><loc>https://example.com/n/1</loc><news:news><news:publication_date>2026-09-19T08:00:00+08:00</news:publication_date><news:title>範例標題 &amp; 副題</news:title></news:news><image:image><image:loc>https://example.com/image.jpg</image:loc></image:image></url>
 <url><loc>https://example.com/n/2</loc><lastmod>2026-09-18</lastmod></url></urlset>`
 	got, err := parseSitemap([]byte(body))
 	if err != nil {
@@ -174,6 +178,9 @@ func TestParseSitemap(t *testing.T) {
 	}
 	if got[0].Title != "範例標題 & 副題" {
 		t.Errorf("title = %q", got[0].Title)
+	}
+	if got[0].ImageURL != "https://example.com/image.jpg" {
+		t.Errorf("image = %q", got[0].ImageURL)
 	}
 
 	index := `<?xml version="1.0"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">

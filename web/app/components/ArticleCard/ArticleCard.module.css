@@ -3,11 +3,26 @@
   flex-direction: column;
   gap: var(--space-2);
   /* Leave room for the sticky app bar when a timeline chip jumps here. */
-  scroll-margin-top: calc(64px + var(--space-4));
+  scroll-margin-top: calc(68px + var(--space-4));
+  padding: clamp(18px, 3vw, 26px);
+  border: 2px solid var(--news-line);
+  border-radius: 5px;
+  background: var(--news-card);
 }
 
 .card:target {
-  border-color: var(--md-sys-color-primary);
+  border-color: var(--news-line);
+  box-shadow: 5px 5px 0 var(--news-accent);
+}
+
+.image {
+  width: 100%;
+  max-height: 360px;
+  margin-bottom: var(--space-2);
+  border: 2px solid var(--news-line);
+  border-radius: 2px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
 }
 
 .meta {
@@ -15,16 +30,17 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-2);
-  color: var(--md-sys-color-on-surface-variant);
+  color: var(--news-muted);
 }
 
 .summary {
   max-width: var(--layout-reading-max);
+  color: var(--news-ink-soft);
 }
 
 .note {
   max-width: var(--layout-reading-max);
-  color: var(--md-sys-color-on-surface-variant);
+  color: var(--news-muted);
 }
 
 .actions {

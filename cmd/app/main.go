@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -43,6 +44,8 @@ commands:
             apply the checked-in source settings to one registered outlet
   crawl-backfill [--days 7] [--outlet slug]
             enqueue resumable discovery and missing-body recovery
+  backfill-images
+            fetch source image metadata for existing articles
 `
 
 func main() {
@@ -85,6 +88,16 @@ func run(ctx context.Context, command string, args []string) error {
 		return seed.Run(ctx, pool, *samples)
 	case "serve":
 		return serve(ctx, cfg)
+	case "backfill-images":
+		fs := flag.NewFlagSet("backfill-images", flag.ExitOnError)
+		limit := fs.Int("limit", 200, "maximum number of articles to inspect")
+		if err := fs.Parse(args); err != nil {
+			return err
+		}
+		if *limit < 1 {
+			return errors.New("limit must be positive")
+		}
+		return backfillImages(ctx, cfg, *limit)
 	case "crawl-check":
 		return checkSources(ctx, cfg, args)
 	case "crawl-status", "crawl-backfill", "crawl-sync":
@@ -97,6 +110,41 @@ func run(ctx context.Context, command string, args []string) error {
 	}
 }
 
+// backfillImages stores publisher-advertised image URLs for articles that
+// predate the image column. It fetches pages for indexing only, respects
+// robots.txt, and never extracts or stores article text.
+func backfillImages(ctx context.Context, cfg config.Config, limit int) error {
+	pool, err := db.NewPool(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	q := db.New(pool)
+	articles, err := q.ListArticlesMissingImage(ctx, int32(limit))
+	if err != nil {
+		return fmt.Errorf("list articles missing images: %w", err)
+	}
+	fetcher := crawl.NewFetcher(cfg.CrawlerUserAgent, hostDelay)
+	stored := 0
+	for _, article := range articles {
+		page, finalURL, err := fetcher.Get(ctx, article.Url)
+		if err != nil {
+			slog.Warn("image metadata fetch failed", "url", article.Url, "error", err)
+			continue
+		}
+		imageURL := crawl.ExtractImage(page, finalURL)
+		if imageURL == "" {
+			continue
+		}
+		if err := q.SetArticleImage(ctx, db.SetArticleImageParams{ID: article.ID, ImageUrl: imageURL}); err != nil {
+			return fmt.Errorf("store image for article %d: %w", article.ID, err)
+		}
+		stored++
+	}
+	slog.Info("image backfill complete", "inspected", len(articles), "stored", stored)
+	return nil
+}
 func work(ctx context.Context, cfg config.Config) error {
 	pool, err := db.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {

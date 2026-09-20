@@ -14,7 +14,12 @@ export function TopAppBar({ actions }: { actions?: ReactNode }) {
     <header className={styles.bar}>
       <div className={styles.inner}>
         <Link to="/" className={`${styles.title} md-title-large md-focus-ring`}>
-          {m.site.name}
+          <span className={styles.mark} aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
+          <span>{m.site.name}</span>
         </Link>
         <nav className={styles.nav} aria-label={m.nav.label}>
           {links.map((link) => (

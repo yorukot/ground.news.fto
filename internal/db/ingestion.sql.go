@@ -132,10 +132,11 @@ func (q *Queries) CrawlStatus(ctx context.Context, slug string) ([]CrawlStatusRo
 }
 
 const discoverURL = `-- name: DiscoverURL :exec
-INSERT INTO crawl_urls(url,outlet_id,source,headline,category,scope_reason,eligible,published_at)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+INSERT INTO crawl_urls(url,outlet_id,source,headline,image_url,category,scope_reason,eligible,published_at)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
 ON CONFLICT(url) DO UPDATE SET
  headline=CASE WHEN crawl_urls.headline='' THEN EXCLUDED.headline ELSE crawl_urls.headline END,
+ image_url=CASE WHEN crawl_urls.image_url='' THEN EXCLUDED.image_url ELSE crawl_urls.image_url END,
  category=CASE WHEN crawl_urls.category='' THEN EXCLUDED.category ELSE crawl_urls.category END,
  eligible=CASE WHEN crawl_urls.category='' THEN EXCLUDED.eligible ELSE crawl_urls.eligible END,
  scope_reason=CASE WHEN crawl_urls.category='' THEN EXCLUDED.scope_reason ELSE crawl_urls.scope_reason END,
@@ -147,6 +148,7 @@ type DiscoverURLParams struct {
 	OutletID    int64
 	Source      string
 	Headline    string
+	ImageUrl    string
 	Category    string
 	ScopeReason string
 	Eligible    bool
@@ -159,6 +161,7 @@ func (q *Queries) DiscoverURL(ctx context.Context, arg DiscoverURLParams) error 
 		arg.OutletID,
 		arg.Source,
 		arg.Headline,
+		arg.ImageUrl,
 		arg.Category,
 		arg.ScopeReason,
 		arg.Eligible,
@@ -168,7 +171,7 @@ func (q *Queries) DiscoverURL(ctx context.Context, arg DiscoverURLParams) error 
 }
 
 const getCrawlURL = `-- name: GetCrawlURL :one
-SELECT url, outlet_id, source, headline, category, scope_reason, eligible, published_at, first_seen_at, last_seen_at, result, http_status, error, extractor, body_length, fetched_at, next_attempt_at, article_id FROM crawl_urls WHERE url=$1
+SELECT url, outlet_id, source, headline, image_url, category, scope_reason, eligible, published_at, first_seen_at, last_seen_at, result, http_status, error, extractor, body_length, fetched_at, next_attempt_at, article_id FROM crawl_urls WHERE url=$1
 `
 
 func (q *Queries) GetCrawlURL(ctx context.Context, url string) (CrawlUrl, error) {
@@ -179,6 +182,7 @@ func (q *Queries) GetCrawlURL(ctx context.Context, url string) (CrawlUrl, error)
 		&i.OutletID,
 		&i.Source,
 		&i.Headline,
+		&i.ImageUrl,
 		&i.Category,
 		&i.ScopeReason,
 		&i.Eligible,
@@ -239,7 +243,7 @@ SELECT url,row_number() OVER(PARTITION BY outlet_id ORDER BY (article_id IS NOT 
 WHERE result IN ('pending','retry') AND next_attempt_at<=now() AND eligible
 AND outlet_id IN (SELECT id FROM outlets WHERE enabled)
 )
-SELECT c.url,c.outlet_id,c.published_at FROM crawl_urls c JOIN candidates d ON d.url=c.url
+SELECT c.url,c.outlet_id,c.published_at,c.image_url FROM crawl_urls c JOIN candidates d ON d.url=c.url
 ORDER BY d.position,c.first_seen_at,c.url LIMIT $1 FOR UPDATE OF c SKIP LOCKED
 `
 
@@ -247,6 +251,7 @@ type ListFetchCandidatesRow struct {
 	Url         string
 	OutletID    int64
 	PublishedAt pgtype.Timestamptz
+	ImageUrl    string
 }
 
 func (q *Queries) ListFetchCandidates(ctx context.Context, limit int32) ([]ListFetchCandidatesRow, error) {
@@ -258,7 +263,12 @@ func (q *Queries) ListFetchCandidates(ctx context.Context, limit int32) ([]ListF
 	items := []ListFetchCandidatesRow{}
 	for rows.Next() {
 		var i ListFetchCandidatesRow
-		if err := rows.Scan(&i.Url, &i.OutletID, &i.PublishedAt); err != nil {
+		if err := rows.Scan(
+			&i.Url,
+			&i.OutletID,
+			&i.PublishedAt,
+			&i.ImageUrl,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

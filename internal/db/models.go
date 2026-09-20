@@ -40,6 +40,7 @@ type Article struct {
 	StepArticleID     pgtype.Int8
 	LinkConfidence    pgtype.Float4
 	ManualLink        bool
+	ImageUrl          string
 }
 
 type ArticleEntity struct {
@@ -62,6 +63,7 @@ type CrawlUrl struct {
 	OutletID      int64
 	Source        string
 	Headline      string
+	ImageUrl      string
 	Category      string
 	ScopeReason   string
 	Eligible      bool

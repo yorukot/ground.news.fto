@@ -5,6 +5,7 @@ SELECT
     a.id,
     a.url,
     a.headline,
+    a.image_url,
     a.published_at,
     a.first_seen_at,
     a.reprint_of_id,

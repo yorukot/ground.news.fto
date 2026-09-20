@@ -100,6 +100,17 @@ func (f *Fetcher) DiscoverSource(ctx context.Context, cfg Config, src Source, p 
 			}
 			for _, i := range feed.Items {
 				item := Found{URL: i.Link, Title: i.Title, Category: strings.Join(i.Categories, ",")}
+				if i.Image != nil {
+					item.ImageURL = i.Image.URL
+				}
+				if item.ImageURL == "" {
+					for _, enclosure := range i.Enclosures {
+						if strings.HasPrefix(enclosure.Type, "image/") {
+							item.ImageURL = enclosure.URL
+							break
+						}
+					}
+				}
 				if i.PublishedParsed != nil {
 					item.PublishedAt = *i.PublishedParsed
 				}

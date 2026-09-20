@@ -267,9 +267,10 @@ func (q *Queries) GetSummaryVersion(ctx context.Context, articleID int64) (GetSu
 }
 
 const insertFetchedArticle = `-- name: InsertFetchedArticle :one
-INSERT INTO articles (outlet_id, url, headline, body, published_at, content_hash, minhash)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO articles (outlet_id, url, headline, image_url, body, published_at, content_hash, minhash)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (url) DO UPDATE SET headline=EXCLUDED.headline,body=EXCLUDED.body,
+image_url=CASE WHEN articles.image_url='' THEN EXCLUDED.image_url ELSE articles.image_url END,
 published_at=EXCLUDED.published_at,content_hash=EXCLUDED.content_hash,minhash=EXCLUDED.minhash
 WHERE articles.body=''
 RETURNING id
@@ -279,6 +280,7 @@ type InsertFetchedArticleParams struct {
 	OutletID    int64
 	Url         string
 	Headline    string
+	ImageUrl    string
 	Body        string
 	PublishedAt time.Time
 	ContentHash string
@@ -291,6 +293,7 @@ func (q *Queries) InsertFetchedArticle(ctx context.Context, arg InsertFetchedArt
 		arg.OutletID,
 		arg.Url,
 		arg.Headline,
+		arg.ImageUrl,
 		arg.Body,
 		arg.PublishedAt,
 		arg.ContentHash,
@@ -352,6 +355,59 @@ func (q *Queries) ListArticleEntities(ctx context.Context, articleID int64) ([]L
 	for rows.Next() {
 		var i ListArticleEntitiesRow
 		if err := rows.Scan(&i.ID, &i.CanonicalName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listArticlesMissingImage = `-- name: ListArticlesMissingImage :many
+WITH ranked AS (
+    SELECT
+        a.id,
+        a.url,
+        a.event_id,
+        e.updated_at AS event_updated_at,
+        a.published_at,
+        row_number() OVER (PARTITION BY a.event_id ORDER BY a.published_at DESC, a.id DESC) AS event_rank,
+        EXISTS (
+            SELECT 1 FROM articles image
+            WHERE image.event_id = a.event_id AND image.image_url <> ''
+        ) AS event_has_image
+    FROM articles a
+    LEFT JOIN events e ON e.id = a.event_id
+    WHERE a.image_url = ''
+)
+SELECT id, url
+FROM ranked
+ORDER BY
+    (event_id IS NOT NULL AND NOT event_has_image AND event_rank = 1) DESC,
+    (event_id IS NOT NULL) DESC,
+    event_updated_at DESC NULLS LAST,
+    published_at DESC,
+    id DESC
+LIMIT $1
+`
+
+type ListArticlesMissingImageRow struct {
+	ID  int64
+	Url string
+}
+
+func (q *Queries) ListArticlesMissingImage(ctx context.Context, maxResults int32) ([]ListArticlesMissingImageRow, error) {
+	rows, err := q.db.Query(ctx, listArticlesMissingImage, maxResults)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListArticlesMissingImageRow{}
+	for rows.Next() {
+		var i ListArticlesMissingImageRow
+		if err := rows.Scan(&i.ID, &i.Url); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -541,6 +597,20 @@ func (q *Queries) SetArticleAnalysis(ctx context.Context, arg SetArticleAnalysis
 		arg.HappenedOn,
 		arg.DateIsApproximate,
 	)
+	return err
+}
+
+const setArticleImage = `-- name: SetArticleImage :exec
+UPDATE articles SET image_url = $2 WHERE id = $1 AND image_url = ''
+`
+
+type SetArticleImageParams struct {
+	ID       int64
+	ImageUrl string
+}
+
+func (q *Queries) SetArticleImage(ctx context.Context, arg SetArticleImageParams) error {
+	_, err := q.db.Exec(ctx, setArticleImage, arg.ID, arg.ImageUrl)
 	return err
 }
 

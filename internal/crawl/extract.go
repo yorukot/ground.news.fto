@@ -27,6 +27,7 @@ type Article struct {
 	Headline    string
 	Body        string
 	PublishedAt time.Time
+	ImageURL    string
 	// Provider is the original publisher named in the page's metadata. It
 	// matters on aggregators, where the article is credited to that outlet.
 	Provider string
@@ -45,6 +46,7 @@ func Extract(page []byte, pageURL *url.URL, sel Selectors) (Article, error) {
 	art.PublishedAt = meta.published
 	art.Provider = meta.provider
 	art.Category = meta.category
+	art.ImageURL = resolveImageURL(meta.image, pageURL)
 	accept := func(body, method string) bool {
 		body = trimRelated(dropFurniture(body, art.Headline))
 		if !validBody(body) {
@@ -205,6 +207,7 @@ type metadata struct {
 	category  string
 	siteName  string
 	title     string
+	image     string
 	published time.Time
 	provider  string
 }
@@ -218,6 +221,16 @@ func readMetadata(doc *goquery.Document) metadata {
 	m.title = cleanText(attr(`meta[property="og:title"]`))
 	m.siteName = cleanText(attr(`meta[property="og:site_name"]`))
 	m.category = cleanText(attr(`meta[property="article:section"]`))
+	for _, selector := range []string{
+		`meta[property="og:image:secure_url"]`,
+		`meta[property="og:image"]`,
+		`meta[name="twitter:image"]`,
+		`meta[property="twitter:image"]`,
+	} {
+		if m.image = attr(selector); m.image != "" {
+			break
+		}
+	}
 	for _, selector := range []string{
 		`meta[property="article:published_time"]`,
 		`meta[name="pubdate"]`,
@@ -252,6 +265,9 @@ func readMetadata(doc *goquery.Document) metadata {
 				}
 				m.category = strings.Join(names, ",")
 			}
+			if m.image == "" {
+				m.image = imageFromLD(node["image"])
+			}
 			if m.published.IsZero() {
 				if v, ok := node["datePublished"].(string); ok {
 					m.published = parseTime(v)
@@ -270,6 +286,52 @@ func readMetadata(doc *goquery.Document) metadata {
 		}
 	})
 	return m
+}
+
+// ExtractImage reads only public page metadata. It is used by the maintenance
+// backfill and never returns article text.
+func ExtractImage(page []byte, pageURL *url.URL) string {
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(page))
+	if err != nil {
+		return ""
+	}
+	return resolveImageURL(readMetadata(doc).image, pageURL)
+}
+
+func imageFromLD(value any) string {
+	switch v := value.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case []any:
+		for _, item := range v {
+			if image := imageFromLD(item); image != "" {
+				return image
+			}
+		}
+	case map[string]any:
+		for _, key := range []string{"url", "contentUrl"} {
+			if image, ok := v[key].(string); ok && strings.TrimSpace(image) != "" {
+				return strings.TrimSpace(image)
+			}
+		}
+	}
+	return ""
+}
+
+func resolveImageURL(raw string, base *url.URL) string {
+	raw = strings.TrimSpace(raw)
+	u, err := url.Parse(raw)
+	if err != nil || raw == "" {
+		return ""
+	}
+	if base != nil {
+		u = base.ResolveReference(u)
+	}
+	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return ""
+	}
+	u.Fragment = ""
+	return u.String()
 }
 
 func flattenLD(v any) []map[string]any {

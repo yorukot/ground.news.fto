@@ -104,6 +104,7 @@ func (s *Server) listEvents(w http.ResponseWriter, r *http.Request) {
 			ArticleCount:      row.ArticleCount,
 			OutletCount:       row.OutletCount,
 			LatestDevelopment: row.LatestDevelopment,
+			ImageURL:          row.ImageUrl,
 		})
 	}
 	s.writeJSON(w, http.StatusOK, page)

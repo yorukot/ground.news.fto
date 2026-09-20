@@ -81,7 +81,14 @@ SELECT
         WHERE a.event_id = e.id AND a.step_article_id = a.id
         ORDER BY COALESCE(a.happened_on, a.published_at::date) DESC, a.published_at DESC
         LIMIT 1
-    ), '')::text AS latest_development
+    ), '')::text AS latest_development,
+    COALESCE((
+        SELECT a.image_url
+        FROM articles a
+        WHERE a.event_id = e.id AND a.image_url <> ''
+        ORDER BY a.published_at DESC, a.id DESC
+        LIMIT 1
+    ), '')::text AS image_url
 FROM events e
 WHERE (e.updated_at, e.id) < ($1::timestamptz, $2::bigint)
   AND EXISTS (SELECT 1 FROM articles a WHERE a.event_id = e.id)
@@ -103,6 +110,7 @@ type ListEventsRow struct {
 	ArticleCount      int64
 	OutletCount       int64
 	LatestDevelopment string
+	ImageUrl          string
 }
 
 // Keyset pagination, most recently updated first. For the first page pass a
@@ -124,6 +132,7 @@ func (q *Queries) ListEvents(ctx context.Context, arg ListEventsParams) ([]ListE
 			&i.ArticleCount,
 			&i.OutletCount,
 			&i.LatestDevelopment,
+			&i.ImageUrl,
 		); err != nil {
 			return nil, err
 		}

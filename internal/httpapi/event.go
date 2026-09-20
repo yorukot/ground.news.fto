@@ -63,6 +63,7 @@ func buildEventBody(rows []db.ListEventArticlesRow) ([]Article, []TimelineStep) 
 			Outlet:       outletOf(r),
 			Headline:     r.Headline,
 			URL:          r.Url,
+			ImageURL:     r.ImageUrl,
 			PublishedAt:  r.PublishedAt,
 			Summary:      r.Summary,
 			HeadlineOnly: r.HeadlineOnly,

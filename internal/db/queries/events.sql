@@ -14,7 +14,14 @@ SELECT
         WHERE a.event_id = e.id AND a.step_article_id = a.id
         ORDER BY COALESCE(a.happened_on, a.published_at::date) DESC, a.published_at DESC
         LIMIT 1
-    ), '')::text AS latest_development
+    ), '')::text AS latest_development,
+    COALESCE((
+        SELECT a.image_url
+        FROM articles a
+        WHERE a.event_id = e.id AND a.image_url <> ''
+        ORDER BY a.published_at DESC, a.id DESC
+        LIMIT 1
+    ), '')::text AS image_url
 FROM events e
 WHERE (e.updated_at, e.id) < (sqlc.arg(cursor_updated_at)::timestamptz, sqlc.arg(cursor_id)::bigint)
   AND EXISTS (SELECT 1 FROM articles a WHERE a.event_id = e.id)

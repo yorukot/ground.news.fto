@@ -1,8 +1,9 @@
 -- name: DiscoverURL :exec
-INSERT INTO crawl_urls(url,outlet_id,source,headline,category,scope_reason,eligible,published_at)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+INSERT INTO crawl_urls(url,outlet_id,source,headline,image_url,category,scope_reason,eligible,published_at)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
 ON CONFLICT(url) DO UPDATE SET
  headline=CASE WHEN crawl_urls.headline='' THEN EXCLUDED.headline ELSE crawl_urls.headline END,
+ image_url=CASE WHEN crawl_urls.image_url='' THEN EXCLUDED.image_url ELSE crawl_urls.image_url END,
  category=CASE WHEN crawl_urls.category='' THEN EXCLUDED.category ELSE crawl_urls.category END,
  eligible=CASE WHEN crawl_urls.category='' THEN EXCLUDED.eligible ELSE crawl_urls.eligible END,
  scope_reason=CASE WHEN crawl_urls.category='' THEN EXCLUDED.scope_reason ELSE crawl_urls.scope_reason END,
@@ -17,7 +18,7 @@ SELECT url,row_number() OVER(PARTITION BY outlet_id ORDER BY (article_id IS NOT 
 WHERE result IN ('pending','retry') AND next_attempt_at<=now() AND eligible
 AND outlet_id IN (SELECT id FROM outlets WHERE enabled)
 )
-SELECT c.url,c.outlet_id,c.published_at FROM crawl_urls c JOIN candidates d ON d.url=c.url
+SELECT c.url,c.outlet_id,c.published_at,c.image_url FROM crawl_urls c JOIN candidates d ON d.url=c.url
 ORDER BY d.position,c.first_seen_at,c.url LIMIT $1 FOR UPDATE OF c SKIP LOCKED;
 
 -- name: ReserveFetch :exec

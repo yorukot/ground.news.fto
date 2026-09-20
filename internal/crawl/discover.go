@@ -16,6 +16,8 @@ type Found struct {
 	Category string
 	// Title is discovery metadata; the article page may provide a cleaner title.
 	Title string
+	// ImageURL is an image advertised by the feed or news sitemap.
+	ImageURL string
 	// PublishedAt is the feed's date, used only if the page itself has none.
 	PublishedAt time.Time
 }
@@ -28,6 +30,9 @@ type sitemapDoc struct {
 			PublicationDate string `xml:"publication_date"`
 			Title           string `xml:"title"`
 		} `xml:"news"`
+		Images []struct {
+			Loc string `xml:"loc"`
+		} `xml:"image"`
 	} `xml:"url"`
 }
 
@@ -39,7 +44,14 @@ func parseSitemap(body []byte) ([]Found, error) {
 	out := make([]Found, 0, len(doc.URLs))
 	for _, u := range doc.URLs {
 		at := parseTime(u.News.PublicationDate)
-		out = append(out, Found{URL: strings.TrimSpace(u.Loc), Title: u.News.Title, PublishedAt: at})
+		imageURL := ""
+		if len(u.Images) > 0 {
+			imageURL = strings.TrimSpace(u.Images[0].Loc)
+		}
+		out = append(out, Found{
+			URL: strings.TrimSpace(u.Loc), Title: u.News.Title,
+			ImageURL: imageURL, PublishedAt: at,
+		})
 	}
 	return out, nil
 }

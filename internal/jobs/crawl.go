@@ -145,7 +145,7 @@ func DiscoverOutlet(ctx context.Context, d Deps, outletID int64, since *time.Tim
 					continue
 				}
 				eligible, reason := crawl.InScope(item.Category)
-				if err := q.DiscoverURL(ctx, db.DiscoverURLParams{Url: item.URL, OutletID: o.ID, Source: src.URL, Headline: item.Title, Category: item.Category, Eligible: eligible, ScopeReason: reason, PublishedAt: timestamp(item.PublishedAt)}); err != nil {
+				if err := q.DiscoverURL(ctx, db.DiscoverURLParams{Url: item.URL, OutletID: o.ID, Source: src.URL, Headline: item.Title, ImageUrl: item.ImageURL, Category: item.Category, Eligible: eligible, ScopeReason: reason, PublishedAt: timestamp(item.PublishedAt)}); err != nil {
 					return err
 				}
 			}
@@ -182,7 +182,7 @@ func (w *DispatchFetchWorker) Work(ctx context.Context, _ *river.Job[DispatchFet
 			return err
 		}
 		for _, item := range items {
-			args := FetchArticleArgs{OutletID: item.OutletID, URL: item.Url}
+			args := FetchArticleArgs{OutletID: item.OutletID, URL: item.Url, FeedImageURL: item.ImageUrl}
 			if item.PublishedAt.Valid {
 				args.FeedPublishedAt = &item.PublishedAt.Time
 			}
@@ -201,6 +201,7 @@ type FetchArticleArgs struct {
 	OutletID        int64      `json:"outlet_id"`
 	URL             string     `json:"url" river:"unique"`
 	FeedPublishedAt *time.Time `json:"feed_published_at,omitempty"`
+	FeedImageURL    string     `json:"feed_image_url,omitempty"`
 }
 
 func (FetchArticleArgs) Kind() string { return "fetch_article" }
@@ -235,7 +236,7 @@ func (w *FetchArticleWorker) Work(ctx context.Context, job *river.Job[FetchArtic
 		if job.Args.FeedPublishedAt != nil {
 			at = *job.Args.FeedPublishedAt
 		}
-		if err := q.DiscoverURL(ctx, db.DiscoverURLParams{Url: job.Args.URL, OutletID: o.ID, Eligible: true, ScopeReason: "legacy job", PublishedAt: timestamp(at)}); err != nil {
+		if err := q.DiscoverURL(ctx, db.DiscoverURLParams{Url: job.Args.URL, OutletID: o.ID, ImageUrl: job.Args.FeedImageURL, Eligible: true, ScopeReason: "legacy job", PublishedAt: timestamp(at)}); err != nil {
 			return err
 		}
 		record, err = q.GetCrawlURL(ctx, job.Args.URL)
@@ -254,6 +255,9 @@ func (w *FetchArticleWorker) Work(ctx context.Context, job *river.Job[FetchArtic
 	if err != nil {
 		return w.failure(ctx, job, err)
 	}
+	if art.ImageURL == "" {
+		art.ImageURL = record.ImageUrl
+	}
 	if art.PublishedAt.IsZero() && record.PublishedAt.Valid {
 		art.PublishedAt = record.PublishedAt.Time
 	}
@@ -269,7 +273,16 @@ func (w *FetchArticleWorker) Work(ctx context.Context, job *river.Job[FetchArtic
 	sum := sha256.Sum256([]byte(art.Body))
 	return pgx.BeginFunc(ctx, w.deps.Pool, func(tx pgx.Tx) error {
 		q := db.New(tx)
-		id, err := q.InsertFetchedArticle(ctx, db.InsertFetchedArticleParams{OutletID: o.ID, Url: job.Args.URL, Headline: art.Headline, Body: art.Body, PublishedAt: art.PublishedAt, ContentHash: hex.EncodeToString(sum[:]), Minhash: orEmpty(dedupe.Sign(art.Body))})
+		id, err := q.InsertFetchedArticle(ctx, db.InsertFetchedArticleParams{
+			OutletID:    o.ID,
+			Url:         job.Args.URL,
+			Headline:    art.Headline,
+			ImageUrl:    art.ImageURL,
+			Body:        art.Body,
+			PublishedAt: art.PublishedAt,
+			ContentHash: hex.EncodeToString(sum[:]),
+			Minhash:     orEmpty(dedupe.Sign(art.Body)),
+		})
 		if errors.Is(err, pgx.ErrNoRows) {
 			var existing int64
 			if err := tx.QueryRow(ctx, "SELECT id FROM articles WHERE url=$1", job.Args.URL).Scan(&existing); err != nil {

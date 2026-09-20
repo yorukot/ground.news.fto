@@ -2,10 +2,10 @@ import type { Messages } from "./en";
 
 export const zhTW: Messages = {
   site: {
-    name: "新聞並陳",
-    tagline: "同一事件，各家媒體怎麼報導",
+    name: "跨三小",
+    tagline: "跨越媒體・跨越立場・跨越資訊偏差",
     description:
-      "把各家媒體對同一事件的報導並列，附上每篇報導的摘要與事件時間軸。本站不為任何媒體或報導貼標籤或評分，由讀者自行比較。",
+      "跨三小把各家媒體對同一事件的報導並列，附上每篇報導的摘要與事件時間軸，讓讀者跨越媒體、立場與資訊偏差。",
   },
   nav: {
     label: "主要導覽",
@@ -26,12 +26,21 @@ export const zhTW: Messages = {
     loading: "頁面載入中",
   },
   home: {
-    title: "目前的事件",
+    title: "跨三小",
+    brandLabel: "跨三小：跨越媒體、跨越立場、跨越資訊偏差。",
+    rotatingWords: ["跨越媒體", "跨越立場", "跨越資訊偏差"],
+    kicker: "同一件事，不只一種說法",
+    intro: "從台灣各家媒體追蹤同一事件，比較每篇報導如何取材，再沿著時間軸看事情如何發展。",
+    featured: "焦點事件",
+    latest: "最新事件",
+    latestIntro: "依最新報導時間排序，掌握持續更新中的事件。",
     empty: "目前還沒有事件。",
     loadMore: "載入更多",
     loadingMore: "載入中…",
   },
   eventCard: {
+    developing: "持續更新",
+    latest: "最新進展",
     outlets: (n) => `${n} 家媒體`,
     articles: (n) => `${n} 篇報導`,
     updated: "更新於",

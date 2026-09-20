@@ -11,6 +11,7 @@ CREATE TABLE crawl_urls (
     outlet_id bigint NOT NULL REFERENCES outlets(id),
     source text NOT NULL DEFAULT '',
     headline text NOT NULL DEFAULT '',
+    image_url text NOT NULL DEFAULT '',
     category text NOT NULL DEFAULT '',
     scope_reason text NOT NULL DEFAULT 'unknown section',
     eligible boolean NOT NULL DEFAULT true,
