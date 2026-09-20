@@ -24,7 +24,7 @@ func (q *Queries) FindOutletByName(ctx context.Context, name string) (int64, err
 }
 
 const getOutlet = `-- name: GetOutlet :one
-SELECT id, slug, name, is_aggregator, enabled, crawl_config, coverage
+SELECT id, slug, name, is_aggregator, enabled, crawl_config
 FROM outlets
 WHERE id = $1
 `
@@ -36,7 +36,6 @@ type GetOutletRow struct {
 	IsAggregator bool
 	Enabled      bool
 	CrawlConfig  []byte
-	Coverage     string
 }
 
 func (q *Queries) GetOutlet(ctx context.Context, id int64) (GetOutletRow, error) {
@@ -49,7 +48,6 @@ func (q *Queries) GetOutlet(ctx context.Context, id int64) (GetOutletRow, error)
 		&i.IsAggregator,
 		&i.Enabled,
 		&i.CrawlConfig,
-		&i.Coverage,
 	)
 	return i, err
 }
@@ -152,8 +150,8 @@ func (q *Queries) SetOutletCrawl(ctx context.Context, arg SetOutletCrawlParams) 
 }
 
 const upsertOutlet = `-- name: UpsertOutlet :one
-INSERT INTO outlets (slug, name, domain, is_aggregator, enabled, crawl_config, coverage)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO outlets (slug, name, domain, is_aggregator, enabled, crawl_config)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (slug) DO UPDATE
 SET name = EXCLUDED.name,
     domain = EXCLUDED.domain,
@@ -161,9 +159,7 @@ SET name = EXCLUDED.name,
     -- The seed only supplies crawl settings for an outlet that has none, so
     -- settings changed in the database are never overwritten by a re-seed.
     enabled = CASE WHEN outlets.crawl_config = '{}' THEN EXCLUDED.enabled ELSE outlets.enabled END,
-    crawl_config = CASE WHEN outlets.crawl_config = '{}' THEN EXCLUDED.crawl_config ELSE outlets.crawl_config END,
-    -- Coverage is policy, not tuning: the seed list is its source of truth.
-    coverage = EXCLUDED.coverage
+    crawl_config = CASE WHEN outlets.crawl_config = '{}' THEN EXCLUDED.crawl_config ELSE outlets.crawl_config END
 RETURNING id
 `
 
@@ -174,7 +170,6 @@ type UpsertOutletParams struct {
 	IsAggregator bool
 	Enabled      bool
 	CrawlConfig  []byte
-	Coverage     string
 }
 
 func (q *Queries) UpsertOutlet(ctx context.Context, arg UpsertOutletParams) (int64, error) {
@@ -185,7 +180,6 @@ func (q *Queries) UpsertOutlet(ctx context.Context, arg UpsertOutletParams) (int
 		arg.IsAggregator,
 		arg.Enabled,
 		arg.CrawlConfig,
-		arg.Coverage,
 	)
 	var id int64
 	err := row.Scan(&id)

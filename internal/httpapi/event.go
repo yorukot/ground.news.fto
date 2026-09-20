@@ -94,6 +94,9 @@ func buildEventBody(rows []db.ListEventArticlesRow) ([]Article, []TimelineStep) 
 		} else {
 			// Plan: an unclear date uses the first report date, marked approximate.
 			step.HappenedOn = r.PublishedAt.In(taipei).Format(time.DateOnly)
+			if r.PublishedAt.IsZero() {
+				step.HappenedOn = r.FirstSeenAt.In(taipei).Format(time.DateOnly)
+			}
 			step.DateIsApproximate = true
 		}
 		steps[r.ID] = step

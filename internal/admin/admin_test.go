@@ -25,7 +25,7 @@ type world struct {
 func newWorld(t *testing.T) *world {
 	pool := dbtest.Open(t)
 	q := db.New(pool)
-	outlet, err := q.UpsertOutlet(context.Background(), db.UpsertOutletParams{Slug: "test", Name: "Test", Domain: "example.com", CrawlConfig: []byte("{}"), Coverage: "full"})
+	outlet, err := q.UpsertOutlet(context.Background(), db.UpsertOutletParams{Slug: "test", Name: "Test", Domain: "example.com", CrawlConfig: []byte("{}")})
 	if err != nil {
 		t.Fatal(err)
 	}

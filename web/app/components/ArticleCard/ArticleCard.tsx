@@ -26,7 +26,7 @@ export function ArticleCard({ article }: { article: Article }) {
         <span className="md-label-large" lang={CONTENT_LANG}>
           {article.outlet.name}
         </span>
-        <time className="md-label-medium" dateTime={article.publishedAt}>
+        <time className="md-label-medium" dateTime={article.publishedAt ?? undefined}>
           {fmt.dateTime(article.publishedAt)}
         </time>
       </p>
@@ -63,7 +63,7 @@ function Reprints({ article }: { article: Article }) {
                 <span lang={CONTENT_LANG}>{reprint.outlet.name}</span>
                 <span className="visually-hidden"> {m.common.opensInNewTab}</span>
               </a>
-              <time className={styles.reprintTime} dateTime={reprint.publishedAt}>
+              <time className={styles.reprintTime} dateTime={reprint.publishedAt ?? undefined}>
                 {fmt.dateTime(reprint.publishedAt)}
               </time>
             </li>

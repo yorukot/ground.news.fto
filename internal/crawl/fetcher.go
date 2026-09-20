@@ -7,204 +7,161 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"regexp"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/temoto/robotstxt"
 )
 
-const (
-	maxPageBytes  = 5 << 20
-	robotsTTL     = time.Hour
-	requestTimout = 30 * time.Second
-)
+const maxPageBytes = 5 << 20
 
-// ErrDisallowed means robots.txt forbids fetching the URL.
 var ErrDisallowed = errors.New("disallowed by robots.txt")
 
-// ErrAIInputRefused means the site's robots.txt carries a Content-Signal with
-// ai-input=no: the publisher does not allow its content to be given to an AI
-// model, which is exactly what summarizing does. It wraps ErrDisallowed.
-var ErrAIInputRefused = fmt.Errorf("%w: Content-Signal ai-input=no", ErrDisallowed)
+type HTTPError struct {
+	Status     int
+	RetryAfter time.Duration
+}
 
-// aiInputRefused matches a Content-Signal line that opts out of AI input.
-// https://contentsignals.org: ai-input covers retrieval, grounding and
-// summarization; ai-train (which we never do) covers model training.
-var aiInputRefused = regexp.MustCompile(`(?im)^\s*content-signal\s*:.*\bai-input\s*=\s*no\b`)
+func (e *HTTPError) Error() string { return fmt.Sprintf("HTTP %d", e.Status) }
 
-// Fetcher is the single door to outlet sites. It respects robots.txt and
-// never sends two requests to the same host closer together than HostDelay.
+// Fetcher checks each redirect and shares a host clock across all requests.
 type Fetcher struct {
 	UserAgent string
 	HostDelay time.Duration
 	Client    *http.Client
-
-	mu     sync.Mutex
-	hosts  map[string]*hostState
-	robots map[string]robotsEntry
+	mu        sync.Mutex
+	hosts     map[string]time.Time
+	robots    map[string]robotsEntry
 }
-
-type hostState struct {
-	mu   sync.Mutex
-	next time.Time
-}
-
 type robotsEntry struct {
-	group     *robotstxt.Group
-	noAIInput bool
-	fetched   time.Time
+	group   *robotstxt.Group
+	fetched time.Time
 }
 
-func NewFetcher(userAgent string, hostDelay time.Duration) *Fetcher {
-	return &Fetcher{
-		UserAgent: userAgent,
-		HostDelay: hostDelay,
-		Client:    &http.Client{Timeout: requestTimout},
-		hosts:     make(map[string]*hostState),
-		robots:    make(map[string]robotsEntry),
-	}
+func NewFetcher(agent string, delay time.Duration) *Fetcher {
+	return &Fetcher{UserAgent: agent, HostDelay: delay, Client: &http.Client{Timeout: 30 * time.Second}, hosts: map[string]time.Time{}, robots: map[string]robotsEntry{}}
 }
-
-// Purpose says what a fetched page will be used for, because publishers
-// allow different things for different uses.
-type Purpose int
-
-const (
-	// ForAI: the content will be given to a model. Refused by a site whose
-	// robots.txt says Content-Signal ai-input=no.
-	ForAI Purpose = iota
-	// ForIndex: only link metadata (headline, URL, time) is kept, the way a
-	// search engine lists a page. Used for feeds and sitemaps of outlets in
-	// headline-only coverage; nothing fetched this way may reach a model.
-	ForIndex
-)
-
-// Get fetches a URL for AI use after checking robots.txt. The body is capped at 5 MB.
-func (f *Fetcher) Get(ctx context.Context, rawURL string) ([]byte, *url.URL, error) {
-	return f.GetFor(ctx, rawURL, ForAI)
+func (f *Fetcher) Get(ctx context.Context, raw string) ([]byte, *url.URL, error) {
+	return f.follow(ctx, raw, false)
 }
-
-// GetFor is Get with an explicit purpose.
-func (f *Fetcher) GetFor(ctx context.Context, rawURL string, purpose Purpose) ([]byte, *url.URL, error) {
-	u, err := url.Parse(rawURL)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return nil, nil, fmt.Errorf("invalid url %q", rawURL)
-	}
-	allowed, err := f.allowed(ctx, u, purpose)
-	if err != nil {
-		return nil, nil, err
-	}
-	if !allowed {
-		return nil, nil, fmt.Errorf("%w: %s", ErrDisallowed, rawURL)
-	}
-	body, final, err := f.get(ctx, u)
-	if err != nil {
-		return nil, nil, err
-	}
-	return body, final, nil
-}
-
-func (f *Fetcher) allowed(ctx context.Context, u *url.URL, purpose Purpose) (bool, error) {
+func (f *Fetcher) allowed(ctx context.Context, u *url.URL) error {
 	origin := u.Scheme + "://" + u.Host
-
 	f.mu.Lock()
 	entry, ok := f.robots[origin]
 	f.mu.Unlock()
-
-	if !ok || time.Since(entry.fetched) > robotsTTL {
-		robotsURL, _ := url.Parse(origin + "/robots.txt")
-		body, status, err := f.do(ctx, robotsURL)
+	if !ok || time.Since(entry.fetched) > time.Hour {
+		body, _, err := f.follow(ctx, origin+"/robots.txt", true)
+		status := 200
 		if err != nil {
-			return false, fmt.Errorf("fetch robots.txt for %s: %w", u.Host, err)
+			var he *HTTPError
+			if !errors.As(err, &he) || he.Status == 429 || he.Status >= 500 {
+				return err
+			}
+			status = he.Status
 		}
-		// FromStatusAndBytes applies the standard rules: 4xx means no
-		// restrictions, 5xx means assume everything is disallowed.
 		data, err := robotstxt.FromStatusAndBytes(status, body)
 		if err != nil {
-			return false, fmt.Errorf("parse robots.txt for %s: %w", u.Host, err)
+			return err
 		}
-		entry = robotsEntry{
-			group:     data.FindGroup(f.UserAgent),
-			noAIInput: status == http.StatusOK && aiInputRefused.Match(body),
-			fetched:   time.Now(),
-		}
+		entry = robotsEntry{data.FindGroup(f.UserAgent), time.Now()}
 		f.mu.Lock()
 		f.robots[origin] = entry
 		f.mu.Unlock()
 	}
-	// robots.txt itself stays fetchable; everything else on the site does not.
-	if entry.noAIInput && purpose == ForAI {
-		return false, fmt.Errorf("%w (%s)", ErrAIInputRefused, u.Host)
+	if !entry.group.Test(u.RequestURI()) {
+		return fmt.Errorf("%w: %s", ErrDisallowed, u)
 	}
-	return entry.group.Test(u.RequestURI()), nil
+	return nil
 }
-
-func (f *Fetcher) get(ctx context.Context, u *url.URL) ([]byte, *url.URL, error) {
-	body, status, final, err := f.doFollow(ctx, u)
+func (f *Fetcher) follow(ctx context.Context, raw string, robots bool) ([]byte, *url.URL, error) {
+	u, err := url.Parse(raw)
 	if err != nil {
 		return nil, nil, err
 	}
-	if status != http.StatusOK {
-		return nil, nil, fmt.Errorf("GET %s: status %d", u, status)
+	client := *f.Client
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	for hop := 0; hop <= 5; hop++ {
+		if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
+			return nil, nil, fmt.Errorf("invalid URL %q", u)
+		}
+		if !robots {
+			if err := f.allowed(ctx, u); err != nil {
+				return nil, u, err
+			}
+		}
+		if err := f.wait(ctx, u.Host); err != nil {
+			return nil, u, err
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+		if err != nil {
+			return nil, u, err
+		}
+		req.Header.Set("User-Agent", f.UserAgent)
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+		req.Header.Set("Accept-Language", "zh-TW,zh;q=0.9,en;q=0.5")
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, u, err
+		}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxPageBytes+1))
+		resp.Body.Close()
+		if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+			if hop == 5 {
+				return nil, u, errors.New("too many redirects")
+			}
+			next, err := resp.Location()
+			if err != nil {
+				return nil, u, err
+			}
+			u = next
+			continue
+		}
+		if resp.StatusCode != 200 {
+			delay := time.Duration(0)
+			if n, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil {
+				delay = time.Duration(n) * time.Second
+			} else if at, err := http.ParseTime(resp.Header.Get("Retry-After")); err == nil {
+				delay = time.Until(at)
+			}
+			if resp.StatusCode == 429 {
+				if delay < time.Minute {
+					delay = time.Minute
+				}
+				f.mu.Lock()
+				if at := time.Now().Add(delay); at.After(f.hosts[u.Host]) {
+					f.hosts[u.Host] = at
+				}
+				f.mu.Unlock()
+			}
+			return nil, u, &HTTPError{resp.StatusCode, delay}
+		}
+		if readErr != nil {
+			return nil, u, readErr
+		}
+		if len(body) > maxPageBytes {
+			return nil, u, errors.New("response exceeds 5 MB")
+		}
+		return body, u, nil
 	}
-	return body, final, nil
+	return nil, u, errors.New("too many redirects")
 }
-
-func (f *Fetcher) do(ctx context.Context, u *url.URL) ([]byte, int, error) {
-	body, status, _, err := f.doFollow(ctx, u)
-	return body, status, err
-}
-
-func (f *Fetcher) doFollow(ctx context.Context, u *url.URL) ([]byte, int, *url.URL, error) {
-	if err := f.wait(ctx, u.Host); err != nil {
-		return nil, 0, nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, 0, nil, err
-	}
-	req.Header.Set("User-Agent", f.UserAgent)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	req.Header.Set("Accept-Language", "zh-TW,zh;q=0.9,en;q=0.5")
-
-	resp, err := f.Client.Do(req)
-	if err != nil {
-		return nil, 0, nil, err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxPageBytes))
-	if err != nil {
-		return nil, 0, nil, err
-	}
-	return body, resp.StatusCode, resp.Request.URL, nil
-}
-
-// wait blocks until this host may be contacted again, then reserves the next slot.
 func (f *Fetcher) wait(ctx context.Context, host string) error {
-	f.mu.Lock()
-	state, ok := f.hosts[host]
-	if !ok {
-		state = &hostState{}
-		f.hosts[host] = state
-	}
-	f.mu.Unlock()
-
-	state.mu.Lock()
-	now := time.Now()
-	at := state.next
-	if at.Before(now) {
-		at = now
-	}
-	state.next = at.Add(f.HostDelay)
-	state.mu.Unlock()
-
-	if delay := time.Until(at); delay > 0 {
+	for {
+		f.mu.Lock()
+		at := f.hosts[host]
+		if !at.After(time.Now()) {
+			f.hosts[host] = time.Now().Add(f.HostDelay)
+			f.mu.Unlock()
+			return nil
+		}
+		f.mu.Unlock()
+		t := time.NewTimer(time.Until(at))
 		select {
-		case <-time.After(delay):
+		case <-t.C:
 		case <-ctx.Done():
+			t.Stop()
 			return ctx.Err()
 		}
 	}
-	return nil
 }

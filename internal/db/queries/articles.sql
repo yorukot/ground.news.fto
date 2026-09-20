@@ -6,6 +6,7 @@ SELECT
     a.url,
     a.headline,
     a.published_at,
+    a.first_seen_at,
     a.reprint_of_id,
     a.development,
     a.happened_on,
@@ -14,7 +15,7 @@ SELECT
     o.id AS outlet_id,
     o.slug AS outlet_slug,
     o.name AS outlet_name,
-    (o.coverage = 'headline')::boolean AS headline_only,
+    (a.body = '')::boolean AS headline_only,
     COALESCE(s.text, '')::text AS summary
 FROM articles a
 JOIN outlets o ON o.id = a.outlet_id

@@ -7,23 +7,26 @@ SELECT url FROM articles WHERE url = ANY(sqlc.arg(urls)::text[]);
 -- Returns no row when the URL is already stored, which makes a retried fetch a no-op.
 INSERT INTO articles (outlet_id, url, headline, body, published_at, content_hash, minhash)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-ON CONFLICT (url) DO NOTHING
+ON CONFLICT (url) DO UPDATE SET headline=EXCLUDED.headline,body=EXCLUDED.body,
+published_at=EXCLUDED.published_at,content_hash=EXCLUDED.content_hash,minhash=EXCLUDED.minhash
+WHERE articles.body=''
 RETURNING id;
 
 -- name: GetArticleForDedupe :one
-SELECT id, outlet_id, minhash, published_at, reprint_of_id
+SELECT id, outlet_id, minhash, published_at, reprint_of_id, manual_link
 FROM articles
 WHERE id = $1;
 
 -- name: ListRecentSignatures :many
 -- Wire stories are reprinted within hours, so only recent originals are compared.
-SELECT id, minhash, event_id
-FROM articles
-WHERE first_seen_at >= sqlc.arg(since)
-  AND id <> sqlc.arg(exclude_id)
-  AND reprint_of_id IS NULL
-  AND cardinality(minhash) > 0
-ORDER BY published_at, id;
+SELECT a.id, a.minhash, a.event_id
+FROM articles a
+WHERE a.first_seen_at >= sqlc.arg(since)
+  AND a.id < sqlc.arg(exclude_id)
+  AND a.reprint_of_id IS NULL
+  AND cardinality(a.minhash) > 0
+  AND NOT EXISTS(SELECT 1 FROM crawl_urls c WHERE c.article_id=a.id AND NOT c.eligible)
+ORDER BY a.published_at, a.id;
 
 -- name: SetArticleReprint :exec
 UPDATE articles
@@ -46,7 +49,7 @@ WHERE id = $1;
 
 -- name: GetArticleForLink :one
 SELECT
-    a.id, a.headline, a.development, a.published_at, a.event_id, a.reprint_of_id,
+    a.id, a.headline, a.development, a.published_at, a.first_seen_at, a.manual_link, a.step_article_id, a.event_id, a.reprint_of_id,
     COALESCE(s.text, '')::text AS summary,
     COALESCE(s.recaps, '{}')::text[] AS recaps
 FROM articles a
@@ -88,6 +91,7 @@ WHERE (e.summary_model <> sqlc.arg(model) OR e.summary_prompt_version <> sqlc.ar
   AND EXISTS (
       SELECT 1 FROM articles a JOIN summaries s ON s.article_id = a.id
       WHERE a.event_id = e.id AND a.reprint_of_id IS NULL
+      AND a.url NOT LIKE 'https://example.com/ground-sample/%'
   )
 ORDER BY e.updated_at DESC
 LIMIT sqlc.arg(max_results);
@@ -145,35 +149,3 @@ FROM article_entities ae
 JOIN entities e ON e.id = ae.entity_id
 WHERE ae.article_id = $1
 ORDER BY e.id;
-
--- name: InsertHeadlineArticle :one
--- A headline-only article: feed metadata and nothing else. The body stays
--- empty because the page is never fetched.
-INSERT INTO articles (outlet_id, url, headline, body, published_at, content_hash, minhash)
-VALUES ($1, $2, $3, '', $4, $5, '{}')
-ON CONFLICT (url) DO NOTHING
-RETURNING id;
-
--- name: GetHeadlineArticle :one
-SELECT id, headline, published_at, first_seen_at, event_id FROM articles WHERE id = $1;
-
--- name: ListEntityNames :many
--- Every name an entity is known by, for matching headlines without a model.
-SELECT id, kind, canonical_name, aliases FROM entities;
-
--- name: ListRecentEventsSharingEntities :many
--- Like ListEventsSharingEntities, but only events still in the news. A
--- headline match has no model to judge it, so it is kept to current events.
-SELECT ee.event_id AS id, count(*)::bigint AS shared
-FROM event_entities ee
-JOIN events e ON e.id = ee.event_id
-WHERE ee.entity_id = ANY(sqlc.arg(entity_ids)::bigint[])
-  AND e.updated_at >= sqlc.arg(updated_since)
-GROUP BY ee.event_id
-ORDER BY shared DESC, ee.event_id DESC
-LIMIT sqlc.arg(max_results);
-
--- name: AttachHeadlineArticle :exec
--- Attaches without touching the timeline or the event's updated time: a
--- headline tells us an outlet covered the event, not what it reported.
-UPDATE articles SET event_id = $2, link_confidence = $3 WHERE id = $1;

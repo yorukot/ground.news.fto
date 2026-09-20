@@ -40,6 +40,8 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_SUMMARY_MODEL: ${OPENAI_SUMMARY_MODEL:-}
       CRAWLER_USER_AGENT: ${CRAWLER_USER_AGENT:-GroundNewsTW-bot/0.1}
+      AI_MAX_NEW_ARTICLES_PER_DAY: ${AI_MAX_NEW_ARTICLES_PER_DAY:-500}
+      ALLOW_FAKE_AI: ${ALLOW_FAKE_AI:-false}
     depends_on:
       migrate:
         condition: service_completed_successfully

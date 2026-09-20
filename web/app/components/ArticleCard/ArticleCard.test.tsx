@@ -48,12 +48,16 @@ describe("ArticleCard", () => {
 
   it("explains a headline-only article instead of summarizing it", () => {
     render(<ArticleCard article={{ ...article, summary: "", headlineOnly: true, reprints: [] }} />);
-    expect(screen.getByText(/doesn't allow AI to read its articles/)).toBeInTheDocument();
+    expect(screen.getByText(/full article has not been retrieved/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Read the original/ })).toBeInTheDocument();
   });
 
   it("has no detectable accessibility violations", async () => {
     const { container } = render(<ArticleCard article={article} />);
     expect((await axe(container)).violations).toEqual([]);
+  });
+  it("shows an unknown date without fabricating a timestamp", () => {
+    render(<ArticleCard article={{ ...article, publishedAt: null, reprints: [] }} />);
+    expect(screen.getByText("Publication time unknown")).toBeInTheDocument();
   });
 });

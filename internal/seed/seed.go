@@ -3,7 +3,6 @@
 package seed
 
 import (
-	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -42,7 +41,6 @@ func Run(ctx context.Context, pool *pgxpool.Pool, withSamples bool) error {
 				IsAggregator: o.IsAggregator,
 				Enabled:      o.Crawl != nil,
 				CrawlConfig:  crawlConfig,
-				Coverage:     cmp.Or(o.Coverage, CoverageFull),
 			})
 			if err != nil {
 				return fmt.Errorf("upsert outlet %s: %w", o.Slug, err)

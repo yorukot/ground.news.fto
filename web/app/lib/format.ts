@@ -37,7 +37,8 @@ export function createFormatters(intlLocale: string, m: Messages) {
   });
 
   return {
-    dateTime: (iso: string) => dateTime.format(new Date(iso)),
+    dateTime: (iso: string | null) =>
+      iso ? dateTime.format(new Date(iso)) : m.article.unknownDate,
     date: (iso: string) => date.format(new Date(iso)),
     yearMonth: (iso: string) => yearMonth.format(new Date(iso)),
 

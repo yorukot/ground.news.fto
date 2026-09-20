@@ -49,11 +49,11 @@ WHERE step_article_id = sqlc.arg(old_step_id) AND event_id = sqlc.arg(event_id);
 -- name: MoveArticle :exec
 -- An admin's decision is certain, so the confidence becomes 1.
 UPDATE articles
-SET event_id = $2, step_article_id = $3, link_confidence = 1
+SET event_id = $2, step_article_id = $3, link_confidence = 1, manual_link = true
 WHERE id = $1;
 
 -- name: MoveEventArticles :exec
-UPDATE articles SET event_id = sqlc.arg(to_event_id) WHERE event_id = sqlc.arg(from_event_id);
+UPDATE articles SET event_id = sqlc.arg(to_event_id), manual_link=true WHERE event_id = sqlc.arg(from_event_id);
 
 -- name: CopyEventEntities :exec
 INSERT INTO event_entities (event_id, entity_id)

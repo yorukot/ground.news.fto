@@ -8,7 +8,8 @@ Design and architecture docs for Ground News for Taiwan. The code follows these 
 | [tech-stack.md](tech-stack.md) | Backend (Go), frontend (React + Vite + Base UI), infrastructure, repo layout |
 | [design-system.md](design-system.md) | Material Design 3 foundations: color, type, shape, elevation, motion, layout, states, accessibility |
 | [components.md](components.md) | Each M3 component we need, the Base UI primitive behind it, and the page designs |
-| [outlets.md](outlets.md) | Full and headline-only coverage, the rule that decides between them, and every outlet's status |
+| [outlets.md](outlets.md) | Source configuration, full-text extraction, backfill and ingestion operations |
+| [ingestion-validation.md](ingestion-validation.md) | Automated checks, live probes and rollout limitations |
 
 ## Decisions in one table
 
@@ -37,8 +38,8 @@ Design and architecture docs for Ground News for Taiwan. The code follows these 
 
 ## Open questions
 
-- **Outlet permissions.** Seven outlets refuse or restrict AI use, so they get headline-only coverage: headline and link, no page fetch, nothing given to the model; see [outlets.md](outlets.md). Asking them for permission would give them full coverage.
-- **Topic scope.** Several outlets' sitemaps mix sports, entertainment and lifestyle with news. What the site should cover is a product decision; a filter is easy to add once it's made.
+- **Ingestion coverage.** All enabled outlets attempt full text. Inspect per-source and per-article results with `crawl-status`; see [outlets.md](outlets.md).
+- **Topic scope.** Explicit public-interest categories are prioritized; identified entertainment, sports and commercial lifestyle sections are excluded. Unknown categories remain eligible, so mixed-topic sources still need observation.
 
 - The seed color is the M3 baseline violet (`#6750A4`) for now; try alternatives in Material Theme Builder before launch. Constraints are in [design-system.md](design-system.md#color).
 - The site name ("Ground News Taiwan" / "新聞並陳") is a placeholder, defined only in `web/app/i18n/messages/`.

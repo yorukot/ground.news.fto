@@ -68,9 +68,10 @@ export const en = {
         : `${count(years, "year", "years")} later`,
   },
   article: {
+    unknownDate: "Publication time unknown",
     readOriginal: "Read the original",
     headlineOnly:
-      "This outlet doesn't allow AI to read its articles, so there is no summary. The headline is shown as published.",
+      "The full article has not been retrieved yet. The headline is shown as published.",
     alsoRunBy: (n: number) => `Also run by ${count(n, "other outlet", "other outlets")}`,
   },
   outlets: {

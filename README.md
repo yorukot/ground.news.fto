@@ -16,7 +16,7 @@ Every outlet's coverage of the same event, side by side, with a short summary of
 | Ingestion pipeline (crawl, dedupe, summarize, link) | Done; run end to end on three outlets with the real model |
 | Admin tool (review link decisions, merge events, move articles) | Done, with end-to-end tests |
 | Docker images, production compose, CI workflow | Done; images build. The CI workflow has not run on GitHub yet |
-| Outlet coverage | 18 of 20 outlets: 11 in full coverage, 7 headline-only because they refuse or restrict AI use; see [docs/outlets.md](docs/outlets.md) |
+| Outlet coverage | 18 of 20 outlets attempt full-text extraction; see [docs/outlets.md](docs/outlets.md) |
 
 ## Run it locally
 
@@ -28,7 +28,7 @@ make dev-db      # Postgres on 127.0.0.1:5433
 make migrate
 make seed        # outlets plus fictional sample events
 make serve       # API on 127.0.0.1:8080
-make worker      # optional: crawl, summarize and link real articles
+make worker      # crawl continuously; AI requires a configured model
 ```
 
 Without `OPENAI_API_KEY` the worker uses a fake model, which is enough to exercise the pipeline. Set `ADMIN_TOKEN` to enable the admin tool at `/admin`.

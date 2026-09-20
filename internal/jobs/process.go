@@ -43,7 +43,7 @@ func (w *DedupeArticleWorker) Work(ctx context.Context, job *river.Job[DedupeArt
 	}
 
 	var original *db.ListRecentSignaturesRow
-	if len(art.Minhash) > 0 {
+	if len(art.Minhash) > 0 && !art.ManualLink {
 		recent, err := q.ListRecentSignatures(ctx, db.ListRecentSignaturesParams{Since: time.Now().Add(-reprintWindow), ExcludeID: art.ID})
 		if err != nil {
 			return fmt.Errorf("list signatures: %w", err)
@@ -66,8 +66,13 @@ func (w *DedupeArticleWorker) Work(ctx context.Context, job *river.Job[DedupeArt
 				EventID:     original.EventID,
 			})
 		}
-		_, err := river.ClientFromContext[pgx.Tx](ctx).InsertTx(ctx, tx, SummarizeArticleArgs{ArticleID: art.ID}, nil)
-		return err
+		if _, err := db.New(tx).GetSummaryVersion(ctx, art.ID); err == nil {
+			_, err = river.ClientFromContext[pgx.Tx](ctx).InsertTx(ctx, tx, LinkArticleArgs{ArticleID: art.ID}, nil)
+			return err
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		return db.New(tx).MarkAnalysisReady(ctx, art.ID)
 	})
 }
 
@@ -91,6 +96,9 @@ func (w *SummarizeArticleWorker) Timeout(*river.Job[SummarizeArticleArgs]) time.
 }
 
 func (w *SummarizeArticleWorker) Work(ctx context.Context, job *river.Job[SummarizeArticleArgs]) error {
+	if !w.deps.AIEnabled {
+		return river.JobSnooze(time.Hour)
+	}
 	q := db.New(w.deps.Pool)
 	art, err := q.GetArticleForAnalysis(ctx, job.Args.ArticleID)
 	if err != nil {
@@ -110,11 +118,22 @@ func (w *SummarizeArticleWorker) Work(ctx context.Context, job *river.Job[Summar
 
 	var analysis ai.ArticleAnalysis
 	if !upToDate {
+		admitted, err := q.HasAdmission(ctx, art.ID)
+		if err != nil {
+			return err
+		}
+		if !admitted {
+			return q.MarkAnalysisReady(ctx, art.ID)
+		}
+		publishedOn := "unknown"
+		if !art.PublishedAt.IsZero() {
+			publishedOn = art.PublishedAt.In(taipei).Format(time.DateOnly)
+		}
 		analysis, err = w.deps.AI.SummarizeArticle(ctx, ai.ArticleInput{
 			Outlet:      art.OutletName,
 			Headline:    art.Headline,
 			Body:        art.Body,
-			PublishedOn: art.PublishedAt.In(taipei).Format(time.DateOnly),
+			PublishedOn: publishedOn,
 		})
 		if err != nil {
 			return fmt.Errorf("summarize: %w", err)
@@ -249,6 +268,7 @@ func (LinkArticleArgs) InsertOpts() river.InsertOpts {
 }
 
 type LinkArticleWorker struct {
+	enabled bool
 	river.WorkerDefaults[LinkArticleArgs]
 	linker *link.Linker
 }
@@ -258,6 +278,9 @@ func (w *LinkArticleWorker) Timeout(*river.Job[LinkArticleArgs]) time.Duration {
 }
 
 func (w *LinkArticleWorker) Work(ctx context.Context, job *river.Job[LinkArticleArgs]) error {
+	if !w.enabled {
+		return river.JobSnooze(time.Hour)
+	}
 	res, err := w.linker.Link(ctx, job.Args.ArticleID)
 	if err != nil {
 		return err
@@ -287,6 +310,9 @@ type EnqueueEventSummariesWorker struct {
 }
 
 func (w *EnqueueEventSummariesWorker) Work(ctx context.Context, _ *river.Job[EnqueueEventSummariesArgs]) error {
+	if !w.deps.AIEnabled {
+		return nil
+	}
 	q := db.New(w.deps.Pool)
 	events, err := q.ListEventsNeedingSummary(ctx, db.ListEventsNeedingSummaryParams{
 		Model: w.deps.AI.Model(), PromptVersion: ai.EventSummaryPromptVersion, MaxResults: 100,
@@ -306,7 +332,7 @@ func (w *EnqueueEventSummariesWorker) Work(ctx context.Context, _ *river.Job[Enq
 func (SummarizeEventArgs) Kind() string { return "summarize_event" }
 
 func (SummarizeEventArgs) InsertOpts() river.InsertOpts {
-	return river.InsertOpts{Queue: QueueAI, MaxAttempts: 5}
+	return river.InsertOpts{Queue: QueueAI, MaxAttempts: 5, UniqueOpts: activeUnique()}
 }
 
 type SummarizeEventWorker struct {
@@ -319,6 +345,9 @@ func (w *SummarizeEventWorker) Timeout(*river.Job[SummarizeEventArgs]) time.Dura
 }
 
 func (w *SummarizeEventWorker) Work(ctx context.Context, job *river.Job[SummarizeEventArgs]) error {
+	if !w.deps.AIEnabled {
+		return river.JobSnooze(time.Hour)
+	}
 	q := db.New(w.deps.Pool)
 	event, err := q.GetEventForSummary(ctx, job.Args.EventID)
 	if err != nil {

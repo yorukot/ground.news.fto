@@ -44,14 +44,14 @@ Each step in the plan's pipeline is one job kind. A job does its work and enqueu
 
 | Job | Trigger | Does | Enqueues |
 | --- | --- | --- | --- |
-| `crawl_all` | Periodic, every 5 minutes | Lists enabled outlets | `crawl_outlet` per outlet (unique per outlet) |
+| `crawl_all` | Periodic, every 5 minutes | Lists enabled outlets | `crawl_outlet` | From `crawl_all` or backfill | Discover feeds, sitemaps and lists; commit URLs and resumable source progress | `dispatch_fetch` periodically drains stored URLs |
 | `crawl_outlet` | From `crawl_all` | Reads RSS or sitemaps through the fetcher (robots.txt, Content-Signal, per-host delay); finds unseen URLs; enqueues at most `CRAWL_MAX_NEW_PER_RUN` | `fetch_article` per new URL (unique by URL) |
-| `fetch_article` | From crawl | Fetches the page, extracts headline, body, published time; stores the article | `dedupe_article` |
+| `fetch_article` | From crawl | Fetches the page, extracts headline, body, published time; stores the article | `dedupe_article` | From fetch | Compare recent MinHash signatures; exclude reprints from paid analysis | Durable analysis-ready record |
 | `dedupe_article` | From fetch | MinHash comparison against recent articles; sets `reprint_of_id`; credits Yahoo reprints to the original outlet | `summarize_article` (skipped for reprints) |
 | `summarize_article` | From dedupe | One OpenAI call: summary, new development and its date, entities, recapped earlier steps. Cached by content hash | `link_article` |
 | `link_article` | From summarize | Candidate lookup (shared entities + full-text search), model decision, attach or create event, rewrite the event's `timeline_text`, title call for new events | none |
 
-Outlets in headline-only coverage (see [outlets.md](outlets.md)) take a shorter path that never fetches an article page and never calls the model: `crawl_outlet` stores the headline, link and time from the feed or news sitemap, then `match_headline` attaches the article to a current event by finding known entity names in the headline, retrying every 30 minutes for a day.
+`dispatch_analysis` runs every five minutes, fairly admits at most 20 waiting articles per run, and reserves a configurable 500 daily article slots in the same transaction as enqueue. The day is Asia/Taipei. No key means crawling continues and AI work pauses, unless `ALLOW_FAKE_AI=true` explicitly selects development mode. See [outlets.md](outlets.md) for operations.
 
 Rate limits are handled by River queue concurrency (two workers on the `ai` queue) and by the fetcher's per-host delay of 3 seconds, so no outlet is hit hard.
 

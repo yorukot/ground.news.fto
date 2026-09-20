@@ -3,8 +3,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -37,9 +35,14 @@ commands:
   worker    run the ingestion pipeline (crawl, dedupe, summarize, link)
   migrate   apply database migrations
   seed      register outlets; add --samples for fictional sample events
-  crawl-check <outlet-slug>
-            discover an outlet's feeds and extract one article, without
-            storing anything; use it before enabling an outlet
+  crawl-check <slug> [--count 10] [--json]
+            inspect discovery and extraction without storing or calling AI
+  crawl-status [--outlet slug] [--json]
+            report discovery, extraction failures and the AI backlog
+  crawl-sync --outlet slug
+            apply the checked-in source settings to one registered outlet
+  crawl-backfill [--days 7] [--outlet slug]
+            enqueue resumable discovery and missing-body recovery
 `
 
 func main() {
@@ -83,80 +86,15 @@ func run(ctx context.Context, command string, args []string) error {
 	case "serve":
 		return serve(ctx, cfg)
 	case "crawl-check":
-		if len(args) != 1 {
-			return fmt.Errorf("usage: app crawl-check <outlet-slug>")
-		}
-		return crawlCheck(ctx, cfg, args[0])
+		return checkSources(ctx, cfg, args)
+	case "crawl-status", "crawl-backfill", "crawl-sync":
+		return crawlCommand(ctx, cfg, command, args)
 	case "worker":
 		return work(ctx, cfg)
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		return fmt.Errorf("unknown command %q", command)
 	}
-}
-
-// crawlCheck runs discovery and one extraction for an outlet from the seed
-// list, through the same fetcher the worker uses (robots.txt included).
-func crawlCheck(ctx context.Context, cfg config.Config, slug string) error {
-	var outlet *seed.Outlet
-	for i := range seed.Outlets {
-		if seed.Outlets[i].Slug == slug {
-			outlet = &seed.Outlets[i]
-		}
-	}
-	if outlet == nil {
-		return fmt.Errorf("unknown outlet %q", slug)
-	}
-	raw, err := json.Marshal(outlet.Crawl)
-	if err != nil {
-		return err
-	}
-	crawlCfg, pattern, err := crawl.ParseConfig(raw)
-	if err != nil {
-		return err
-	}
-
-	fetcher := crawl.NewFetcher(cfg.CrawlerUserAgent, hostDelay)
-	purpose := crawl.ForAI
-	if outlet.Coverage == seed.CoverageHeadline {
-		purpose = crawl.ForIndex
-	}
-	found := fetcher.Discover(ctx, crawlCfg, pattern, purpose)
-	fmt.Printf("%s: %d article urls discovered\n", slug, len(found))
-	if outlet.Coverage == seed.CoverageHeadline {
-		titled := 0
-		for i, f := range found {
-			if f.Title != "" && !f.PublishedAt.IsZero() {
-				titled++
-			}
-			if i < 3 {
-				fmt.Printf("  %s | %s | %s\n", f.PublishedAt.Format(time.RFC3339), f.Title, f.URL)
-			}
-		}
-		fmt.Printf("  headline-only: %d of %d have a title and a date; no article page is fetched\n", titled, len(found))
-		return nil
-	}
-	for _, f := range found {
-		page, final, err := fetcher.Get(ctx, f.URL)
-		if err != nil {
-			fmt.Printf("  %s\n  fetch failed: %v\n", f.URL, err)
-			if errors.Is(err, crawl.ErrDisallowed) {
-				return err
-			}
-			continue
-		}
-		art, err := crawl.Extract(page, final, crawlCfg.Selectors)
-		if err != nil {
-			fmt.Printf("  %s\n  extract failed: %v\n", f.URL, err)
-			continue
-		}
-		body := []rune(art.Body)
-		fmt.Printf("  url:       %s\n  headline:  %s\n  published: %s (feed: %s)\n  provider:  %s\n  body:      %d runes\n  start:     %s\n  end:       %s\n",
-			f.URL, art.Headline, art.PublishedAt.Format(time.RFC3339), f.PublishedAt.Format(time.RFC3339), art.Provider,
-			len(body), string(body[:min(90, len(body))]), string(body[max(0, len(body)-70):]))
-		return nil
-	}
-	return errors.New("no article could be extracted")
 }
 
 func work(ctx context.Context, cfg config.Config) error {
@@ -170,14 +108,15 @@ func work(ctx context.Context, cfg config.Config) error {
 	if cfg.OpenAIAPIKey != "" {
 		model = ai.NewOpenAI(cfg.OpenAIAPIKey, cfg.OpenAIBaseURL, cfg.OpenAISummaryModel)
 	} else {
-		slog.Warn("OPENAI_API_KEY is not set; using the fake AI client")
+		slog.Warn("OPENAI_API_KEY is not set; AI dispatch disabled unless ALLOW_FAKE_AI=true")
 	}
 
 	deps := jobs.Deps{
-		Pool:           pool,
-		AI:             model,
-		Fetcher:        crawl.NewFetcher(cfg.CrawlerUserAgent, hostDelay),
-		MaxNewPerCrawl: cfg.CrawlMaxNewPerRun,
+		Pool:               pool,
+		AI:                 model,
+		Fetcher:            crawl.NewFetcher(cfg.CrawlerUserAgent, hostDelay),
+		DailyAnalysisLimit: cfg.DailyAnalysisLimit,
+		AIEnabled:          cfg.OpenAIAPIKey != "" || cfg.AllowFakeAI,
 	}
 	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
 		Queues:       jobs.Queues(),

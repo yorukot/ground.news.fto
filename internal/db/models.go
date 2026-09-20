@@ -10,6 +10,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AiAdmission struct {
+	ArticleID  int64
+	OutletID   int64
+	AdmittedOn pgtype.Date
+	AdmittedAt time.Time
+}
+
+type AnalysisPending struct {
+	ArticleID int64
+	ReadyAt   time.Time
+}
+
 type Article struct {
 	ID                int64
 	OutletID          int64
@@ -27,11 +39,43 @@ type Article struct {
 	DateIsApproximate bool
 	StepArticleID     pgtype.Int8
 	LinkConfidence    pgtype.Float4
+	ManualLink        bool
 }
 
 type ArticleEntity struct {
 	ArticleID int64
 	EntityID  int64
+}
+
+type CrawlSource struct {
+	OutletID  int64
+	Source    string
+	Mode      string
+	SinceAt   time.Time
+	Progress  []byte
+	Error     string
+	UpdatedAt time.Time
+}
+
+type CrawlUrl struct {
+	Url           string
+	OutletID      int64
+	Source        string
+	Headline      string
+	Category      string
+	ScopeReason   string
+	Eligible      bool
+	PublishedAt   pgtype.Timestamptz
+	FirstSeenAt   time.Time
+	LastSeenAt    time.Time
+	Result        string
+	HttpStatus    int32
+	Error         string
+	Extractor     string
+	BodyLength    int32
+	FetchedAt     pgtype.Timestamptz
+	NextAttemptAt time.Time
+	ArticleID     pgtype.Int8
 }
 
 type Entity struct {
@@ -68,7 +112,6 @@ type Outlet struct {
 	Enabled      bool
 	CrawlConfig  []byte
 	CreatedAt    time.Time
-	Coverage     string
 }
 
 type Summary struct {

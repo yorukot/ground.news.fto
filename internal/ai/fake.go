@@ -6,8 +6,8 @@ import (
 	"unicode/utf8"
 )
 
-// Fake is a deterministic Client with no network access. The worker uses it
-// when no API key is configured, and tests use it to drive the pipeline. It
+// Fake is a deterministic Client for tests and explicit ALLOW_FAKE_AI development.
+// It
 // makes no attempt at quality: the summary is the article's opening, and an
 // article joins a candidate event only when a recap or its development
 // literally matches one of that event's steps.

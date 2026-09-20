@@ -2,11 +2,6 @@
 //
 //	crawl_all → crawl_outlet → fetch_article → dedupe_article → summarize_article → link_article → summarize_event
 //
-// Outlets in headline-only coverage take a shorter path that never fetches an
-// article page and never calls the model:
-//
-//	crawl_all → crawl_outlet → match_headline
-//
 // Each job writes its result and enqueues the next job in one transaction, so
 // a crash can neither lose an article nor process it twice. Every worker is
 // also idempotent, because River retries a job whose process died mid-run.
@@ -17,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/rivertype"
 
 	"github.com/yorukot/ground-news-tw/internal/ai"
 	"github.com/yorukot/ground-news-tw/internal/crawl"
@@ -42,10 +38,9 @@ type Deps struct {
 	Pool    *pgxpool.Pool
 	AI      ai.Client
 	Fetcher *crawl.Fetcher
-	// MaxNewPerCrawl bounds how many articles one crawl of one outlet can
-	// enqueue, so a first run, or a feed that suddenly lists its archive,
-	// can't flood an outlet's site or the model budget.
-	MaxNewPerCrawl int
+	// DailyAnalysisLimit bounds admissions, not crawling or individual API calls.
+	DailyAnalysisLimit int
+	AIEnabled          bool
 }
 
 func Queues() map[string]river.QueueConfig {
@@ -58,6 +53,10 @@ func Queues() map[string]river.QueueConfig {
 	}
 }
 
+func activeUnique() river.UniqueOpts {
+	return river.UniqueOpts{ByArgs: true, ByState: []rivertype.JobState{rivertype.JobStateAvailable, rivertype.JobStatePending, rivertype.JobStateRunning, rivertype.JobStateRetryable, rivertype.JobStateScheduled}}
+}
+
 func Workers(d Deps) *river.Workers {
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &CrawlAllWorker{deps: d})
@@ -65,15 +64,19 @@ func Workers(d Deps) *river.Workers {
 	river.AddWorker(workers, &FetchArticleWorker{deps: d})
 	river.AddWorker(workers, &DedupeArticleWorker{deps: d})
 	river.AddWorker(workers, &SummarizeArticleWorker{deps: d})
-	river.AddWorker(workers, &LinkArticleWorker{linker: &link.Linker{Pool: d.Pool, AI: d.AI}})
+	river.AddWorker(workers, &LinkArticleWorker{linker: &link.Linker{Pool: d.Pool, AI: d.AI}, enabled: d.AIEnabled})
 	river.AddWorker(workers, &SummarizeEventWorker{deps: d})
 	river.AddWorker(workers, &EnqueueEventSummariesWorker{deps: d})
-	river.AddWorker(workers, &MatchHeadlineWorker{deps: d})
+	river.AddWorker(workers, &MatchHeadlineWorker{})
+	river.AddWorker(workers, &DispatchFetchWorker{deps: d})
+	river.AddWorker(workers, &DispatchAnalysisWorker{deps: d})
 	return workers
 }
 
 func PeriodicJobs() []*river.PeriodicJob {
 	return []*river.PeriodicJob{
+		river.NewPeriodicJob(river.PeriodicInterval(time.Minute), func() (river.JobArgs, *river.InsertOpts) { return DispatchFetchArgs{}, nil }, &river.PeriodicJobOpts{RunOnStart: true}),
+		river.NewPeriodicJob(river.PeriodicInterval(crawlInterval), func() (river.JobArgs, *river.InsertOpts) { return DispatchAnalysisArgs{}, nil }, &river.PeriodicJobOpts{RunOnStart: true}),
 		river.NewPeriodicJob(
 			river.PeriodicInterval(crawlInterval),
 			func() (river.JobArgs, *river.InsertOpts) { return CrawlAllArgs{}, nil },

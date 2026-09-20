@@ -143,34 +143,21 @@ func TestFetcherRespectsRobotsAndDelay(t *testing.T) {
 	}
 }
 
-func TestFetcherHonoursContentSignal(t *testing.T) {
-	pages := 0
+func TestContentSignalDoesNotDisableExtraction(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/robots.txt" {
-			w.Write([]byte("User-agent: *\nContent-Signal: search=yes, ai-input=no, ai-train=no\nAllow: /\n"))
+			w.Write([]byte("User-agent: *\nContent-Signal: ai-input=no\nDisallow: /private\n"))
 			return
 		}
-		pages++
+		w.Write([]byte(page))
 	}))
 	defer srv.Close()
-
-	_, _, err := NewFetcher("TestBot/1.0", 0).Get(context.Background(), srv.URL+"/news/1")
-	if !errors.Is(err, ErrAIInputRefused) || !errors.Is(err, ErrDisallowed) {
-		t.Fatalf("err = %v, want ErrAIInputRefused", err)
+	f := NewFetcher("TestBot/1.0", 0)
+	if _, _, err := f.Get(context.Background(), srv.URL+"/news"); err != nil {
+		t.Fatal(err)
 	}
-	if pages != 0 {
-		t.Fatal("a site that refuses AI input must not be fetched at all")
-	}
-
-	// Listing the site's headlines the way a search engine would is a
-	// different use, and the signal (search=yes) allows it.
-	if _, _, err := NewFetcher("TestBot/1.0", 0).GetFor(context.Background(), srv.URL+"/feed.xml", ForIndex); err != nil {
-		t.Fatalf("index fetch: %v", err)
-	}
-
-	// ai-input=yes (CNA's setting) is permission, and training is never done.
-	if aiInputRefused.MatchString("Content-signal: search=yes, ai-input=yes, ai-train=no") {
-		t.Fatal("ai-input=yes must not be treated as a refusal")
+	if _, _, err := f.Get(context.Background(), srv.URL+"/private"); !errors.Is(err, ErrDisallowed) {
+		t.Fatal(err)
 	}
 }
 
@@ -182,7 +169,7 @@ func TestParseSitemap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0].URL != "https://example.com/n/1" || got[0].PublishedAt.IsZero() || got[1].PublishedAt.IsZero() {
+	if len(got) != 2 || got[0].URL != "https://example.com/n/1" || got[0].PublishedAt.IsZero() || !got[1].PublishedAt.IsZero() {
 		t.Fatalf("got %+v", got)
 	}
 	if got[0].Title != "範例標題 & 副題" {

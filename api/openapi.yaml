@@ -155,7 +155,7 @@ components:
           format: int64
           description: The article card to link to; for a wire reprint, the original.
         outlet: { $ref: "#/components/schemas/Outlet" }
-        publishedAt: { type: string, format: date-time }
+        publishedAt: { type: [string, "null"], format: date-time }
     Article:
       type: object
       required: [id, outlet, headline, url, publishedAt, summary, headlineOnly, reprints]
@@ -166,15 +166,14 @@ components:
           type: string
           description: The original headline, unchanged.
         url: { type: string, format: uri }
-        publishedAt: { type: string, format: date-time }
+        publishedAt: { type: [string, "null"], format: date-time }
         summary:
           type: string
           description: Empty for a headline-only article.
         headlineOnly:
           type: boolean
           description: >
-            True for outlets that don't allow AI use of their content. Only the
-            headline and link are shown; the article is never summarized.
+            Compatibility field: true when this article has no retrieved body.
         reprints:
           type: array
           items: { $ref: "#/components/schemas/Reprint" }
@@ -184,4 +183,4 @@ components:
       properties:
         outlet: { $ref: "#/components/schemas/Outlet" }
         url: { type: string, format: uri }
-        publishedAt: { type: string, format: date-time }
+        publishedAt: { type: [string, "null"], format: date-time }

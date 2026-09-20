@@ -1,6 +1,9 @@
 package httpapi
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // These types are the JSON contract described in api/openapi.yaml.
 // Article bodies are deliberately absent: article text is never served.
@@ -66,8 +69,7 @@ type Article struct {
 	URL         string    `json:"url"`
 	PublishedAt time.Time `json:"publishedAt"`
 	Summary     string    `json:"summary"`
-	// HeadlineOnly is true for outlets that don't allow AI use of their
-	// content: the site lists the headline and link, and never a summary.
+	// HeadlineOnly is a compatibility field indicating missing article text.
 	HeadlineOnly bool `json:"headlineOnly"`
 	// Reprints lists the other outlets that ran the same wire story.
 	Reprints []Reprint `json:"reprints"`
@@ -81,6 +83,36 @@ type Reprint struct {
 
 type errorBody struct {
 	Error errorDetail `json:"error"`
+}
+
+// Zero publication times are unknown, not the discovery time. Keep the Go
+// types convenient for sorting while emitting an honest nullable API field.
+func optionalTime(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
+}
+func (a Article) MarshalJSON() ([]byte, error) {
+	type plain Article
+	return json.Marshal(struct {
+		plain
+		PublishedAt *time.Time `json:"publishedAt"`
+	}{plain(a), optionalTime(a.PublishedAt)})
+}
+func (a Reprint) MarshalJSON() ([]byte, error) {
+	type plain Reprint
+	return json.Marshal(struct {
+		plain
+		PublishedAt *time.Time `json:"publishedAt"`
+	}{plain(a), optionalTime(a.PublishedAt)})
+}
+func (a StepReport) MarshalJSON() ([]byte, error) {
+	type plain StepReport
+	return json.Marshal(struct {
+		plain
+		PublishedAt *time.Time `json:"publishedAt"`
+	}{plain(a), optionalTime(a.PublishedAt)})
 }
 
 type errorDetail struct {

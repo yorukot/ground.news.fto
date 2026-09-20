@@ -59,8 +59,9 @@ export const zhTW: Messages = {
     gapYears: (years, months) => (months > 0 ? `${years} 年 ${months} 個月後` : `${years} 年後`),
   },
   article: {
+    unknownDate: "發布時間未知",
     readOriginal: "閱讀原文",
-    headlineOnly: "這家媒體不允許 AI 讀取其報導，因此沒有摘要。標題依原樣呈現。",
+    headlineOnly: "尚未取得完整內容。標題依原樣呈現。",
     alsoRunBy: (n) => `另有 ${n} 家媒體刊登`,
   },
   outlets: {

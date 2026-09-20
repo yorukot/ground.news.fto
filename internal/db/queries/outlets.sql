@@ -5,8 +5,8 @@ WHERE NOT is_aggregator
 ORDER BY name;
 
 -- name: UpsertOutlet :one
-INSERT INTO outlets (slug, name, domain, is_aggregator, enabled, crawl_config, coverage)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO outlets (slug, name, domain, is_aggregator, enabled, crawl_config)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (slug) DO UPDATE
 SET name = EXCLUDED.name,
     domain = EXCLUDED.domain,
@@ -14,9 +14,7 @@ SET name = EXCLUDED.name,
     -- The seed only supplies crawl settings for an outlet that has none, so
     -- settings changed in the database are never overwritten by a re-seed.
     enabled = CASE WHEN outlets.crawl_config = '{}' THEN EXCLUDED.enabled ELSE outlets.enabled END,
-    crawl_config = CASE WHEN outlets.crawl_config = '{}' THEN EXCLUDED.crawl_config ELSE outlets.crawl_config END,
-    -- Coverage is policy, not tuning: the seed list is its source of truth.
-    coverage = EXCLUDED.coverage
+    crawl_config = CASE WHEN outlets.crawl_config = '{}' THEN EXCLUDED.crawl_config ELSE outlets.crawl_config END
 RETURNING id;
 
 -- name: ListEnabledOutlets :many
@@ -26,7 +24,7 @@ WHERE enabled
 ORDER BY id;
 
 -- name: GetOutlet :one
-SELECT id, slug, name, is_aggregator, enabled, crawl_config, coverage
+SELECT id, slug, name, is_aggregator, enabled, crawl_config
 FROM outlets
 WHERE id = $1;
 

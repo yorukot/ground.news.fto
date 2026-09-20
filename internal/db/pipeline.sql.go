@@ -12,23 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const attachHeadlineArticle = `-- name: AttachHeadlineArticle :exec
-UPDATE articles SET event_id = $2, link_confidence = $3 WHERE id = $1
-`
-
-type AttachHeadlineArticleParams struct {
-	ID             int64
-	EventID        pgtype.Int8
-	LinkConfidence pgtype.Float4
-}
-
-// Attaches without touching the timeline or the event's updated time: a
-// headline tells us an outlet covered the event, not what it reported.
-func (q *Queries) AttachHeadlineArticle(ctx context.Context, arg AttachHeadlineArticleParams) error {
-	_, err := q.db.Exec(ctx, attachHeadlineArticle, arg.ID, arg.EventID, arg.LinkConfidence)
-	return err
-}
-
 const createEntity = `-- name: CreateEntity :one
 INSERT INTO entities (canonical_name, kind, aliases, search_text)
 VALUES ($1, $2, $3, $4)
@@ -140,7 +123,7 @@ func (q *Queries) GetArticleForAnalysis(ctx context.Context, id int64) (GetArtic
 }
 
 const getArticleForDedupe = `-- name: GetArticleForDedupe :one
-SELECT id, outlet_id, minhash, published_at, reprint_of_id
+SELECT id, outlet_id, minhash, published_at, reprint_of_id, manual_link
 FROM articles
 WHERE id = $1
 `
@@ -151,6 +134,7 @@ type GetArticleForDedupeRow struct {
 	Minhash     []int32
 	PublishedAt time.Time
 	ReprintOfID pgtype.Int8
+	ManualLink  bool
 }
 
 func (q *Queries) GetArticleForDedupe(ctx context.Context, id int64) (GetArticleForDedupeRow, error) {
@@ -162,13 +146,14 @@ func (q *Queries) GetArticleForDedupe(ctx context.Context, id int64) (GetArticle
 		&i.Minhash,
 		&i.PublishedAt,
 		&i.ReprintOfID,
+		&i.ManualLink,
 	)
 	return i, err
 }
 
 const getArticleForLink = `-- name: GetArticleForLink :one
 SELECT
-    a.id, a.headline, a.development, a.published_at, a.event_id, a.reprint_of_id,
+    a.id, a.headline, a.development, a.published_at, a.first_seen_at, a.manual_link, a.step_article_id, a.event_id, a.reprint_of_id,
     COALESCE(s.text, '')::text AS summary,
     COALESCE(s.recaps, '{}')::text[] AS recaps
 FROM articles a
@@ -177,14 +162,17 @@ WHERE a.id = $1
 `
 
 type GetArticleForLinkRow struct {
-	ID          int64
-	Headline    string
-	Development string
-	PublishedAt time.Time
-	EventID     pgtype.Int8
-	ReprintOfID pgtype.Int8
-	Summary     string
-	Recaps      []string
+	ID            int64
+	Headline      string
+	Development   string
+	PublishedAt   time.Time
+	FirstSeenAt   time.Time
+	ManualLink    bool
+	StepArticleID pgtype.Int8
+	EventID       pgtype.Int8
+	ReprintOfID   pgtype.Int8
+	Summary       string
+	Recaps        []string
 }
 
 func (q *Queries) GetArticleForLink(ctx context.Context, id int64) (GetArticleForLinkRow, error) {
@@ -195,6 +183,9 @@ func (q *Queries) GetArticleForLink(ctx context.Context, id int64) (GetArticleFo
 		&i.Headline,
 		&i.Development,
 		&i.PublishedAt,
+		&i.FirstSeenAt,
+		&i.ManualLink,
+		&i.StepArticleID,
 		&i.EventID,
 		&i.ReprintOfID,
 		&i.Summary,
@@ -259,31 +250,6 @@ func (q *Queries) GetEventTitles(ctx context.Context, eventIds []int64) ([]GetEv
 	return items, nil
 }
 
-const getHeadlineArticle = `-- name: GetHeadlineArticle :one
-SELECT id, headline, published_at, first_seen_at, event_id FROM articles WHERE id = $1
-`
-
-type GetHeadlineArticleRow struct {
-	ID          int64
-	Headline    string
-	PublishedAt time.Time
-	FirstSeenAt time.Time
-	EventID     pgtype.Int8
-}
-
-func (q *Queries) GetHeadlineArticle(ctx context.Context, id int64) (GetHeadlineArticleRow, error) {
-	row := q.db.QueryRow(ctx, getHeadlineArticle, id)
-	var i GetHeadlineArticleRow
-	err := row.Scan(
-		&i.ID,
-		&i.Headline,
-		&i.PublishedAt,
-		&i.FirstSeenAt,
-		&i.EventID,
-	)
-	return i, err
-}
-
 const getSummaryVersion = `-- name: GetSummaryVersion :one
 SELECT model, prompt_version FROM summaries WHERE article_id = $1
 `
@@ -303,7 +269,9 @@ func (q *Queries) GetSummaryVersion(ctx context.Context, articleID int64) (GetSu
 const insertFetchedArticle = `-- name: InsertFetchedArticle :one
 INSERT INTO articles (outlet_id, url, headline, body, published_at, content_hash, minhash)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-ON CONFLICT (url) DO NOTHING
+ON CONFLICT (url) DO UPDATE SET headline=EXCLUDED.headline,body=EXCLUDED.body,
+published_at=EXCLUDED.published_at,content_hash=EXCLUDED.content_hash,minhash=EXCLUDED.minhash
+WHERE articles.body=''
 RETURNING id
 `
 
@@ -327,36 +295,6 @@ func (q *Queries) InsertFetchedArticle(ctx context.Context, arg InsertFetchedArt
 		arg.PublishedAt,
 		arg.ContentHash,
 		arg.Minhash,
-	)
-	var id int64
-	err := row.Scan(&id)
-	return id, err
-}
-
-const insertHeadlineArticle = `-- name: InsertHeadlineArticle :one
-INSERT INTO articles (outlet_id, url, headline, body, published_at, content_hash, minhash)
-VALUES ($1, $2, $3, '', $4, $5, '{}')
-ON CONFLICT (url) DO NOTHING
-RETURNING id
-`
-
-type InsertHeadlineArticleParams struct {
-	OutletID    int64
-	Url         string
-	Headline    string
-	PublishedAt time.Time
-	ContentHash string
-}
-
-// A headline-only article: feed metadata and nothing else. The body stays
-// empty because the page is never fetched.
-func (q *Queries) InsertHeadlineArticle(ctx context.Context, arg InsertHeadlineArticleParams) (int64, error) {
-	row := q.db.QueryRow(ctx, insertHeadlineArticle,
-		arg.OutletID,
-		arg.Url,
-		arg.Headline,
-		arg.PublishedAt,
-		arg.ContentHash,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -414,43 +352,6 @@ func (q *Queries) ListArticleEntities(ctx context.Context, articleID int64) ([]L
 	for rows.Next() {
 		var i ListArticleEntitiesRow
 		if err := rows.Scan(&i.ID, &i.CanonicalName); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listEntityNames = `-- name: ListEntityNames :many
-SELECT id, kind, canonical_name, aliases FROM entities
-`
-
-type ListEntityNamesRow struct {
-	ID            int64
-	Kind          string
-	CanonicalName string
-	Aliases       []string
-}
-
-// Every name an entity is known by, for matching headlines without a model.
-func (q *Queries) ListEntityNames(ctx context.Context) ([]ListEntityNamesRow, error) {
-	rows, err := q.db.Query(ctx, listEntityNames)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListEntityNamesRow{}
-	for rows.Next() {
-		var i ListEntityNamesRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Kind,
-			&i.CanonicalName,
-			&i.Aliases,
-		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -545,6 +446,7 @@ WHERE (e.summary_model <> $1 OR e.summary_prompt_version <> $2)
   AND EXISTS (
       SELECT 1 FROM articles a JOIN summaries s ON s.article_id = a.id
       WHERE a.event_id = e.id AND a.reprint_of_id IS NULL
+      AND a.url NOT LIKE 'https://example.com/ground-sample/%'
   )
 ORDER BY e.updated_at DESC
 LIMIT $3
@@ -576,58 +478,15 @@ func (q *Queries) ListEventsNeedingSummary(ctx context.Context, arg ListEventsNe
 	return items, nil
 }
 
-const listRecentEventsSharingEntities = `-- name: ListRecentEventsSharingEntities :many
-SELECT ee.event_id AS id, count(*)::bigint AS shared
-FROM event_entities ee
-JOIN events e ON e.id = ee.event_id
-WHERE ee.entity_id = ANY($1::bigint[])
-  AND e.updated_at >= $2
-GROUP BY ee.event_id
-ORDER BY shared DESC, ee.event_id DESC
-LIMIT $3
-`
-
-type ListRecentEventsSharingEntitiesParams struct {
-	EntityIds    []int64
-	UpdatedSince time.Time
-	MaxResults   int32
-}
-
-type ListRecentEventsSharingEntitiesRow struct {
-	ID     int64
-	Shared int64
-}
-
-// Like ListEventsSharingEntities, but only events still in the news. A
-// headline match has no model to judge it, so it is kept to current events.
-func (q *Queries) ListRecentEventsSharingEntities(ctx context.Context, arg ListRecentEventsSharingEntitiesParams) ([]ListRecentEventsSharingEntitiesRow, error) {
-	rows, err := q.db.Query(ctx, listRecentEventsSharingEntities, arg.EntityIds, arg.UpdatedSince, arg.MaxResults)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListRecentEventsSharingEntitiesRow{}
-	for rows.Next() {
-		var i ListRecentEventsSharingEntitiesRow
-		if err := rows.Scan(&i.ID, &i.Shared); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listRecentSignatures = `-- name: ListRecentSignatures :many
-SELECT id, minhash, event_id
-FROM articles
-WHERE first_seen_at >= $1
-  AND id <> $2
-  AND reprint_of_id IS NULL
-  AND cardinality(minhash) > 0
-ORDER BY published_at, id
+SELECT a.id, a.minhash, a.event_id
+FROM articles a
+WHERE a.first_seen_at >= $1
+  AND a.id < $2
+  AND a.reprint_of_id IS NULL
+  AND cardinality(a.minhash) > 0
+  AND NOT EXISTS(SELECT 1 FROM crawl_urls c WHERE c.article_id=a.id AND NOT c.eligible)
+ORDER BY a.published_at, a.id
 `
 
 type ListRecentSignaturesParams struct {

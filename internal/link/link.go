@@ -57,6 +57,21 @@ func (l *Linker) Link(ctx context.Context, articleID int64) (Result, error) {
 	case art.ReprintOfID.Valid:
 		return Result{Skipped: "reprint"}, nil
 	case art.EventID.Valid:
+		if art.ManualLink && art.Summary != "" && !art.StepArticleID.Valid {
+			err := pgx.BeginFunc(ctx, l.Pool, func(tx pgx.Tx) error {
+				q := db.New(tx)
+				if art.Development != "" {
+					if err := q.SetArticleStep(ctx, db.SetArticleStepParams{ID: art.ID, StepArticleID: pgtype.Int8{Int64: art.ID, Valid: true}}); err != nil {
+						return err
+					}
+				}
+				if err := q.CopyArticleEntitiesToEvent(ctx, db.CopyArticleEntitiesToEventParams{ArticleID: art.ID, EventID: art.EventID.Int64}); err != nil {
+					return err
+				}
+				return RefreshEvent(ctx, q, art.EventID.Int64, time.Now())
+			})
+			return Result{EventID: art.EventID.Int64, Skipped: "manual link preserved"}, err
+		}
 		return Result{EventID: art.EventID.Int64, Skipped: "already linked"}, nil
 	case art.Summary == "":
 		return Result{Skipped: "not analyzed"}, nil
@@ -102,7 +117,11 @@ func (l *Linker) Link(ctx context.Context, articleID int64) (Result, error) {
 	err = pgx.BeginFunc(ctx, l.Pool, func(tx pgx.Tx) error {
 		q := db.New(tx)
 		if res.NewEvent {
-			id, err := q.CreateEvent(ctx, db.CreateEventParams{Title: newTitle, FirstSeenAt: art.PublishedAt, UpdatedAt: art.PublishedAt})
+			at := art.PublishedAt
+			if at.IsZero() {
+				at = art.FirstSeenAt
+			}
+			id, err := q.CreateEvent(ctx, db.CreateEventParams{Title: newTitle, FirstSeenAt: at, UpdatedAt: at})
 			if err != nil {
 				return fmt.Errorf("create event: %w", err)
 			}

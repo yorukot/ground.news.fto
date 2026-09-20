@@ -210,7 +210,7 @@ func (q *Queries) LockEvent(ctx context.Context, id int64) (LockEventRow, error)
 
 const moveArticle = `-- name: MoveArticle :exec
 UPDATE articles
-SET event_id = $2, step_article_id = $3, link_confidence = 1
+SET event_id = $2, step_article_id = $3, link_confidence = 1, manual_link = true
 WHERE id = $1
 `
 
@@ -227,7 +227,7 @@ func (q *Queries) MoveArticle(ctx context.Context, arg MoveArticleParams) error 
 }
 
 const moveEventArticles = `-- name: MoveEventArticles :exec
-UPDATE articles SET event_id = $1 WHERE event_id = $2
+UPDATE articles SET event_id = $1, manual_link=true WHERE event_id = $2
 `
 
 type MoveEventArticlesParams struct {

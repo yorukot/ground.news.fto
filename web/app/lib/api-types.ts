@@ -130,7 +130,7 @@ export interface components {
             articleId: number;
             outlet: components["schemas"]["Outlet"];
             /** Format: date-time */
-            publishedAt: string;
+            publishedAt: string | null;
         };
         Article: {
             /** Format: int64 */
@@ -141,10 +141,10 @@ export interface components {
             /** Format: uri */
             url: string;
             /** Format: date-time */
-            publishedAt: string;
+            publishedAt: string | null;
             /** @description Empty for a headline-only article. */
             summary: string;
-            /** @description True for outlets that don't allow AI use of their content. Only the headline and link are shown; the article is never summarized. */
+            /** @description Compatibility field: true when this article has no retrieved body. */
             headlineOnly: boolean;
             reprints: components["schemas"]["Reprint"][];
         };
@@ -153,7 +153,7 @@ export interface components {
             /** Format: uri */
             url: string;
             /** Format: date-time */
-            publishedAt: string;
+            publishedAt: string | null;
         };
     };
     responses: {

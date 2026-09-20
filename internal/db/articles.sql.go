@@ -62,6 +62,7 @@ SELECT
     a.url,
     a.headline,
     a.published_at,
+    a.first_seen_at,
     a.reprint_of_id,
     a.development,
     a.happened_on,
@@ -70,7 +71,7 @@ SELECT
     o.id AS outlet_id,
     o.slug AS outlet_slug,
     o.name AS outlet_name,
-    (o.coverage = 'headline')::boolean AS headline_only,
+    (a.body = '')::boolean AS headline_only,
     COALESCE(s.text, '')::text AS summary
 FROM articles a
 JOIN outlets o ON o.id = a.outlet_id
@@ -84,6 +85,7 @@ type ListEventArticlesRow struct {
 	Url               string
 	Headline          string
 	PublishedAt       time.Time
+	FirstSeenAt       time.Time
 	ReprintOfID       pgtype.Int8
 	Development       string
 	HappenedOn        pgtype.Date
@@ -112,6 +114,7 @@ func (q *Queries) ListEventArticles(ctx context.Context, eventID int64) ([]ListE
 			&i.Url,
 			&i.Headline,
 			&i.PublishedAt,
+			&i.FirstSeenAt,
 			&i.ReprintOfID,
 			&i.Development,
 			&i.HappenedOn,

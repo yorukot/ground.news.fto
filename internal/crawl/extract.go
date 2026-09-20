@@ -22,6 +22,8 @@ const minBodyRunes = 120
 var ErrNoArticle = errors.New("no article content found")
 
 type Article struct {
+	Extractor   string
+	Category    string
 	Headline    string
 	Body        string
 	PublishedAt time.Time
@@ -42,6 +44,15 @@ func Extract(page []byte, pageURL *url.URL, sel Selectors) (Article, error) {
 	var art Article
 	art.PublishedAt = meta.published
 	art.Provider = meta.provider
+	art.Category = meta.category
+	accept := func(body, method string) bool {
+		body = trimRelated(dropFurniture(body, art.Headline))
+		if !validBody(body) {
+			return false
+		}
+		art.Body, art.Extractor = body, method
+		return true
+	}
 
 	if sel.Headline != "" {
 		art.Headline = cleanText(doc.Find(sel.Headline).First().Text())
@@ -52,7 +63,17 @@ func Extract(page []byte, pageURL *url.URL, sel Selectors) (Article, error) {
 			body.Find(remove).Remove()
 		}
 		body.Find("script, style, figure, iframe, noscript").Remove()
-		art.Body = paragraphs(body)
+		text := paragraphs(body)
+		if sel.Lead != "" {
+			lead := cleanText(body.Find(sel.Lead).First().Text())
+			if lead != "" && !strings.Contains(text, lead) {
+				text = lead + "\n\n" + text
+			}
+		}
+		accept(text, "selector")
+	}
+	if art.Body == "" {
+		accept(meta.body, "json-ld")
 	}
 
 	if art.Headline == "" || art.Body == "" {
@@ -64,7 +85,7 @@ func Extract(page []byte, pageURL *url.URL, sel Selectors) (Article, error) {
 			if art.Body == "" && readable.Node != nil {
 				var text bytes.Buffer
 				if err := readable.RenderText(&text); err == nil {
-					art.Body = normalizeBody(text.String())
+					accept(normalizeBody(text.String()), "readability")
 				}
 			}
 			if art.PublishedAt.IsZero() {
@@ -90,6 +111,18 @@ func Extract(page []byte, pageURL *url.URL, sel Selectors) (Article, error) {
 		return Article{}, ErrNoArticle
 	}
 	return art, nil
+}
+
+func validBody(body string) bool {
+	if len([]rune(body)) < minBodyRunes {
+		return false
+	}
+	for _, marker := range []string{"訂閱後即可閱讀全文", "登入後即可閱讀全文", "訂閱解鎖全文", "Access Denied", "Just a moment..."} {
+		if strings.Contains(body, marker) {
+			return false
+		}
+	}
+	return true
 }
 
 // timestampLine matches a line that is only a publish or update time.
@@ -121,6 +154,11 @@ var relatedMarkers = []string{
 // trimRelated cuts the body at the first paragraph that opens such a block,
 // provided it comes late enough that real content isn't lost to a stray match.
 func trimRelated(body string) string {
+	for _, marker := range []string{"【加入關鍵評論網會員】", "更多內幕："} {
+		if i := strings.Index(body, marker); i > len(body)/2 {
+			body = body[:i]
+		}
+	}
 	paragraphs := strings.Split(body, "\n\n")
 	for i, p := range paragraphs {
 		if i < len(paragraphs)/2 {
@@ -163,6 +201,8 @@ func stripSiteName(headline, siteName string) string {
 }
 
 type metadata struct {
+	body      string
+	category  string
 	siteName  string
 	title     string
 	published time.Time
@@ -177,6 +217,7 @@ func readMetadata(doc *goquery.Document) metadata {
 	}
 	m.title = cleanText(attr(`meta[property="og:title"]`))
 	m.siteName = cleanText(attr(`meta[property="og:site_name"]`))
+	m.category = cleanText(attr(`meta[property="article:section"]`))
 	for _, selector := range []string{
 		`meta[property="article:published_time"]`,
 		`meta[name="pubdate"]`,
@@ -196,6 +237,21 @@ func readMetadata(doc *goquery.Document) metadata {
 			return
 		}
 		for _, node := range flattenLD(raw) {
+			if body, ok := node["articleBody"].(string); ok && m.body == "" {
+				m.body = normalizeBody(body)
+			}
+			if category, ok := node["articleSection"].(string); ok && m.category == "" {
+				m.category = category
+			}
+			if categories, ok := node["articleSection"].([]any); ok && m.category == "" {
+				var names []string
+				for _, category := range categories {
+					if name, ok := category.(string); ok {
+						names = append(names, name)
+					}
+				}
+				m.category = strings.Join(names, ",")
+			}
 			if m.published.IsZero() {
 				if v, ok := node["datePublished"].(string); ok {
 					m.published = parseTime(v)

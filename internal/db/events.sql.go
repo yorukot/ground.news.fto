@@ -33,7 +33,7 @@ const getEvent = `-- name: GetEvent :one
 SELECT
     e.id,
     e.title,
-	 e.summary,
+    e.summary,
     e.first_seen_at,
     e.updated_at,
     (SELECT count(*) FROM articles a WHERE a.event_id = e.id)::bigint AS article_count,
